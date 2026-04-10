@@ -1,0 +1,35 @@
+{
+  "build": {
+    "local": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "channel": "local",
+      "env": {
+        "APP_STAGE": "local"
+      }
+    },
+    "dev": {
+      "distribution": "internal",
+      "channel": "dev",
+      "env": {
+        "APP_STAGE": "dev"
+      }
+    },
+    "stg": {
+      "distribution": "internal",
+      "channel": "stg",
+      "env": {
+        "APP_STAGE": "stg"
+      }
+    },
+    "prd": {
+      "channel": "prd",
+      "env": {
+        "APP_STAGE": "prd"
+      }
+    }
+  },
+  "submit": {
+    "prd": {}
+  }
+}
