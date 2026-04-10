@@ -1,1 +1,4 @@
 .expo/
+/node_modules/
+/.expo-export-smoke/
+/.idea/
