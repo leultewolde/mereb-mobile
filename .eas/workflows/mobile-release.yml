@@ -75,6 +75,7 @@ jobs:
     environment: production
     env:
       APP_STAGE: prd
+      EXPO_DEBUG: "1"
     params:
       build_id: ${{ needs.build_android.outputs.build_id }}
       profile: prd
