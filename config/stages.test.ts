@@ -1,9 +1,17 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { resolveMobileStage, resolveStageConfig } from './stages'
 
 const repoRoot = resolve(import.meta.dirname, '../../..')
+const hasMonorepoInfraContract =
+  existsSync(resolve(repoRoot, 'infra/local/compose.yaml')) &&
+  existsSync(resolve(repoRoot, 'infra/local/keycloak/realm-social.json')) &&
+  existsSync(resolve(repoRoot, 'infra/platform/terraform/envs/dev/main.tf')) &&
+  existsSync(resolve(repoRoot, 'infra/platform/terraform/envs/stg/main.tf')) &&
+  existsSync(resolve(repoRoot, 'infra/platform/terraform/envs/prd/main.tf')) &&
+  existsSync(resolve(repoRoot, 'web/shell/docker-entrypoint.d/40-env-config.sh'))
+const itWithMonorepoContract = hasMonorepoInfraContract ? it : it.skip
 
 function read(relativePath: string): string {
   return readFileSync(resolve(repoRoot, relativePath), 'utf8')
@@ -88,7 +96,7 @@ describe('mobile stages', () => {
     })
   })
 
-  it('keeps the default local stage aligned with local infra auth settings', () => {
+  itWithMonorepoContract('keeps the default local stage aligned with local infra auth settings', () => {
     const localConfig = resolveStageConfig('local')
     const localCompose = read('infra/local/compose.yaml')
     const localRealm = read('infra/local/keycloak/realm-social.json')
@@ -101,7 +109,7 @@ describe('mobile stages', () => {
     expect(localRealm).toContain('"included.client.audience": "social"')
   })
 
-  it('matches terraform and shared hosted runtime sources', () => {
+  itWithMonorepoContract('matches terraform and shared hosted runtime sources', () => {
     const devTerraform = read('infra/platform/terraform/envs/dev/main.tf')
     const stgTerraform = read('infra/platform/terraform/envs/stg/main.tf')
     const prdTerraform = read('infra/platform/terraform/envs/prd/main.tf')

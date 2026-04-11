@@ -1,5 +1,13 @@
 import { config } from '@mobile/config'
-import { createContext, type PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react'
+import {
+  createContext,
+  type PropsWithChildren,
+  type ReactElement,
+  useContext,
+  useEffect,
+  useMemo,
+  useState
+} from 'react'
 
 export type PublicFlags = Record<string, boolean> & {
   inviteOnlyRegistration: boolean
@@ -45,7 +53,7 @@ function flagsChanged(prev: PublicFlags, next: PublicFlags): boolean {
 export function FlagsProvider({
   token,
   children
-}: Readonly<FlagsProviderProps>): JSX.Element {
+}: Readonly<FlagsProviderProps>): ReactElement {
   const defaultFlags = useMemo<PublicFlags>(
     () => ({
       inviteOnlyRegistration: false,

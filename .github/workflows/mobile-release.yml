@@ -1,0 +1,101 @@
+name: mobile-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit SHA or tag to release
+        required: true
+        type: string
+
+jobs:
+  production-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: |
+          if [ -f pnpm-lock.yaml ]; then
+            pnpm install --frozen-lockfile
+          else
+            pnpm install
+          fi
+
+      - name: Mobile config contract test
+        run: pnpm exec vitest run config/stages.test.ts config/index.test.ts
+
+      - name: Typecheck mobile app
+        run: pnpm exec tsc --noEmit
+
+      - name: Lint mobile app
+        run: pnpm exec eslint .
+
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_ACCESS_TOKEN }}
+
+      - name: Build and submit iOS release
+        id: ios_build
+        run: |
+          eas build --profile prd --platform ios --auto-submit --non-interactive --wait --json > ios-build.json
+          node <<'EOF'
+          const fs = require('node:fs');
+          const raw = JSON.parse(fs.readFileSync('ios-build.json', 'utf8'));
+          const build = Array.isArray(raw) ? raw[0] : raw;
+          const buildId = build?.id ?? '';
+          const detailsUrl = build?.buildDetailsPageUrl ?? build?.detailsPageUrl ?? '';
+          const archiveUrl = build?.artifacts?.buildUrl ?? build?.artifacts?.applicationArchiveUrl ?? '';
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `build_id=${buildId}\ndetails_url=${detailsUrl}\narchive_url=${archiveUrl}\n`);
+          EOF
+
+      - name: Build and submit Android release
+        id: android_build
+        run: |
+          eas build --profile prd --platform android --auto-submit --non-interactive --wait --json > android-build.json
+          node <<'EOF'
+          const fs = require('node:fs');
+          const raw = JSON.parse(fs.readFileSync('android-build.json', 'utf8'));
+          const build = Array.isArray(raw) ? raw[0] : raw;
+          const buildId = build?.id ?? '';
+          const detailsUrl = build?.buildDetailsPageUrl ?? build?.detailsPageUrl ?? '';
+          const archiveUrl = build?.artifacts?.buildUrl ?? build?.artifacts?.applicationArchiveUrl ?? '';
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `build_id=${buildId}\ndetails_url=${detailsUrl}\narchive_url=${archiveUrl}\n`);
+          EOF
+
+      - name: Summarize production build and submission
+        run: |
+          {
+            echo "## Mobile production build and submission"
+            echo
+            echo "- iOS build ID: \`${{ steps.ios_build.outputs.build_id }}\`"
+            echo "- iOS build details: ${{ steps.ios_build.outputs.details_url }}"
+            echo "- iOS artifact URL: ${{ steps.ios_build.outputs.archive_url }}"
+            echo "- Android build ID: \`${{ steps.android_build.outputs.build_id }}\`"
+            echo "- Android build details: ${{ steps.android_build.outputs.details_url }}"
+            echo "- Android artifact URL: ${{ steps.android_build.outputs.archive_url }}"
+            echo
+            echo "Auto-submit is enabled:"
+            echo "- iOS submits to App Store Connect / TestFlight using submit profile \`prd\`"
+            echo "- Android submits to Google Play internal testing using submit profile \`prd\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload build metadata artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-release-build-metadata
+          path: |
+            ios-build.json
+            android-build.json
