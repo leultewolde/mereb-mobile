@@ -23,6 +23,7 @@
     "build:stg": "pnpm run prepare:packages && APP_STAGE=stg npx eas-cli build --profile stg --platform all",
     "build:prd": "pnpm run prepare:packages && APP_STAGE=prd npx eas-cli build --profile prd --platform all",
     "submit:prd": "pnpm run prepare:packages && APP_STAGE=prd npx eas-cli submit --profile prd --platform all",
+    "lockfile:refresh": "node ./scripts/refresh-lockfile.mjs",
     "icon-assets": "node ./scripts/generate-icon-assets.mjs",
     "store-assets": "APP_STAGE=prd node ./scripts/generate-store-assets.mjs"
   },
