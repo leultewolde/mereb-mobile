@@ -38,7 +38,7 @@
     "prd": {
       "android": {
         "track": "internal",
-        "releaseStatus": "completed",
+        "releaseStatus": "draft",
         "changesNotSentForReview": true
       },
       "ios": {
