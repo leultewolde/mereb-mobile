@@ -5,17 +5,13 @@ on:
     tags:
       - v*
       - mobile-v*
-  workflow_dispatch:
+  workflow_dispatch: {}
 
 defaults:
   tools:
     node: "20"
     corepack: true
     pnpm: "10.30.1"
-
-concurrency:
-  cancel_in_progress: false
-  group: ${{ workflow.filename }}-${{ github.ref }}
 
 jobs:
   validate:
@@ -63,6 +59,10 @@ jobs:
     needs:
       - build_ios
     type: submit
+    environment: production
+    env:
+      APP_STAGE: prd
+      EXPO_DEBUG: "1"
     params:
       build_id: ${{ needs.build_ios.outputs.build_id }}
       profile: prd
@@ -72,6 +72,9 @@ jobs:
     needs:
       - build_android
     type: submit
+    environment: production
+    env:
+      APP_STAGE: prd
     params:
       build_id: ${{ needs.build_android.outputs.build_id }}
       profile: prd
