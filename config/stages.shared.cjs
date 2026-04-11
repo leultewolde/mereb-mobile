@@ -1,31 +1,32 @@
 const HOSTED_KEYCLOAK_URL = 'https://auth.mereb.app'
 const DEFAULT_LOCAL_GATEWAY_ORIGIN = 'http://localhost:8000'
 const DEFAULT_LOCAL_KEYCLOAK_URL = 'http://localhost:8081'
+const EAS_PROJECT_ID = 'e1e8e4af-45f6-458c-8c35-39876e2440b0'
 
 const STAGE_VARIANTS = {
   local: {
     appName: 'Mereb Social Local',
     appScheme: 'mereb-local',
-    iosBundleIdentifier: 'com.mereb.social.local',
-    androidPackage: 'com.mereb.social.local'
+    iosBundleIdentifier: 'com.mereb.app.local',
+    androidPackage: 'com.mereb.app.local'
   },
   dev: {
     appName: 'Mereb Social Dev',
     appScheme: 'mereb-dev',
-    iosBundleIdentifier: 'com.mereb.social.dev',
-    androidPackage: 'com.mereb.social.dev'
+    iosBundleIdentifier: 'com.mereb.app.dev',
+    androidPackage: 'com.mereb.app.dev'
   },
   stg: {
     appName: 'Mereb Social Stg',
     appScheme: 'mereb-stg',
-    iosBundleIdentifier: 'com.mereb.social.stg',
-    androidPackage: 'com.mereb.social.stg'
+    iosBundleIdentifier: 'com.mereb.app.stg',
+    androidPackage: 'com.mereb.app.stg'
   },
   prd: {
     appName: 'Mereb Social',
     appScheme: 'mereb',
-    iosBundleIdentifier: 'com.mereb.social',
-    androidPackage: 'com.mereb.social'
+    iosBundleIdentifier: 'com.mereb.app',
+    androidPackage: 'com.mereb.app'
   }
 }
 
@@ -65,9 +66,30 @@ function resolveLocalKeycloakUrl(environment) {
   return normalizeOrigin(explicitOrigin ?? DEFAULT_LOCAL_KEYCLOAK_URL)
 }
 
+function resolveWebOrigin(stage, environment) {
+  const explicitOrigin = trim(environment.WEB_ORIGIN)
+  if (explicitOrigin) {
+    return normalizeOrigin(explicitOrigin)
+  }
+
+  if (stage === 'local') {
+    return 'http://localhost:5173'
+  }
+
+  if (stage === 'dev') {
+    return 'https://dev.mereb.app'
+  }
+
+  if (stage === 'stg') {
+    return 'https://stg.mereb.app'
+  }
+
+  return 'https://mereb.app'
+}
+
 function resolveStageConfig(stage, environment = process.env) {
   const variant = STAGE_VARIANTS[stage]
-  const easProjectId = trim(environment.EAS_PROJECT_ID) ?? ''
+  const easProjectId = trim(environment.EAS_PROJECT_ID) ?? EAS_PROJECT_ID
 
   const apiUrl =
     stage === 'local'
@@ -81,6 +103,9 @@ function resolveStageConfig(stage, environment = process.env) {
   const graphqlUrl = `${apiUrl}/graphql`
   const flagsUrl = `${apiUrl}/flags`
   const inviteRedeemUrl = `${apiUrl}/invite/redeem`
+  const webOrigin = resolveWebOrigin(stage, environment)
+  const privacyUrl = `${webOrigin}/privacy`
+  const supportUrl = `${webOrigin}/support`
 
   const keycloak =
     stage === 'local'
@@ -117,7 +142,9 @@ function resolveStageConfig(stage, environment = process.env) {
     INVITE_REDEEM_URL: inviteRedeemUrl,
     API_URL: apiUrl,
     APP_SCHEME: variant.appScheme,
-    EAS_PROJECT_ID: easProjectId
+    EAS_PROJECT_ID: easProjectId,
+    PRIVACY_URL: privacyUrl,
+    SUPPORT_URL: supportUrl
   }
 
   return {
@@ -130,6 +157,8 @@ function resolveStageConfig(stage, environment = process.env) {
     flagsUrl,
     inviteRedeemUrl,
     apiUrl,
+    privacyUrl,
+    supportUrl,
     keycloak,
     easProjectId,
     extra

@@ -1,0 +1,231 @@
+{
+  "generatedAt": "2026-04-11T01:10:33.498Z",
+  "requirements": {
+    "apple": {
+      "screenshotSize": "1284x2778",
+      "screenshotReference": "Apple App Store Connect screenshot specifications for 6.5-inch display"
+    },
+    "google": {
+      "phoneScreenshotSize": "1080x1920",
+      "tablet7ScreenshotSize": "1206x2144",
+      "tablet10ScreenshotSize": "1440x2560",
+      "iconSize": "512x512",
+      "featureGraphicSize": "1024x500"
+    }
+  },
+  "files": [
+    {
+      "type": "screenshot",
+      "suite": "Apple iPhone 6.5\"",
+      "page": "feed",
+      "path": "store-assets/generated/apple/iphone-6.5/feed.png",
+      "width": 1284,
+      "height": 2778
+    },
+    {
+      "type": "screenshot",
+      "suite": "Apple iPhone 6.5\"",
+      "page": "people",
+      "path": "store-assets/generated/apple/iphone-6.5/people.png",
+      "width": 1284,
+      "height": 2778
+    },
+    {
+      "type": "screenshot",
+      "suite": "Apple iPhone 6.5\"",
+      "page": "messages",
+      "path": "store-assets/generated/apple/iphone-6.5/messages.png",
+      "width": 1284,
+      "height": 2778
+    },
+    {
+      "type": "screenshot",
+      "suite": "Apple iPhone 6.5\"",
+      "page": "conversation",
+      "path": "store-assets/generated/apple/iphone-6.5/conversation.png",
+      "width": 1284,
+      "height": 2778
+    },
+    {
+      "type": "screenshot",
+      "suite": "Apple iPhone 6.5\"",
+      "page": "profile",
+      "path": "store-assets/generated/apple/iphone-6.5/profile.png",
+      "width": 1284,
+      "height": 2778
+    },
+    {
+      "type": "screenshot",
+      "suite": "Apple iPhone 6.5\"",
+      "page": "login",
+      "path": "store-assets/generated/apple/iphone-6.5/login.png",
+      "width": 1284,
+      "height": 2778
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play phone",
+      "page": "feed",
+      "path": "store-assets/generated/google/phone/feed.png",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play phone",
+      "page": "people",
+      "path": "store-assets/generated/google/phone/people.png",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play phone",
+      "page": "messages",
+      "path": "store-assets/generated/google/phone/messages.png",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play phone",
+      "page": "conversation",
+      "path": "store-assets/generated/google/phone/conversation.png",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play phone",
+      "page": "profile",
+      "path": "store-assets/generated/google/phone/profile.png",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play phone",
+      "page": "login",
+      "path": "store-assets/generated/google/phone/login.png",
+      "width": 1080,
+      "height": 1920
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play 7-inch tablet",
+      "page": "feed",
+      "path": "store-assets/generated/google/tablet-7/feed.png",
+      "width": 1206,
+      "height": 2144
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play 7-inch tablet",
+      "page": "people",
+      "path": "store-assets/generated/google/tablet-7/people.png",
+      "width": 1206,
+      "height": 2144
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play 7-inch tablet",
+      "page": "messages",
+      "path": "store-assets/generated/google/tablet-7/messages.png",
+      "width": 1206,
+      "height": 2144
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play 7-inch tablet",
+      "page": "conversation",
+      "path": "store-assets/generated/google/tablet-7/conversation.png",
+      "width": 1206,
+      "height": 2144
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play 7-inch tablet",
+      "page": "profile",
+      "path": "store-assets/generated/google/tablet-7/profile.png",
+      "width": 1206,
+      "height": 2144
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play 7-inch tablet",
+      "page": "login",
+      "path": "store-assets/generated/google/tablet-7/login.png",
+      "width": 1206,
+      "height": 2144
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play 10-inch tablet",
+      "page": "feed",
+      "path": "store-assets/generated/google/tablet-10/feed.png",
+      "width": 1440,
+      "height": 2560
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play 10-inch tablet",
+      "page": "people",
+      "path": "store-assets/generated/google/tablet-10/people.png",
+      "width": 1440,
+      "height": 2560
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play 10-inch tablet",
+      "page": "messages",
+      "path": "store-assets/generated/google/tablet-10/messages.png",
+      "width": 1440,
+      "height": 2560
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play 10-inch tablet",
+      "page": "conversation",
+      "path": "store-assets/generated/google/tablet-10/conversation.png",
+      "width": 1440,
+      "height": 2560
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play 10-inch tablet",
+      "page": "profile",
+      "path": "store-assets/generated/google/tablet-10/profile.png",
+      "width": 1440,
+      "height": 2560
+    },
+    {
+      "type": "screenshot",
+      "suite": "Google Play 10-inch tablet",
+      "page": "login",
+      "path": "store-assets/generated/google/tablet-10/login.png",
+      "width": 1440,
+      "height": 2560
+    },
+    {
+      "type": "icon",
+      "suite": "Apple App Store",
+      "path": "store-assets/generated/apple/app-store-icon-1024.png",
+      "width": 1024,
+      "height": 1024
+    },
+    {
+      "type": "icon",
+      "suite": "Google Play",
+      "path": "store-assets/generated/google/play-icon-512.png",
+      "width": 512,
+      "height": 512
+    },
+    {
+      "type": "feature-graphic",
+      "suite": "Google Play",
+      "path": "store-assets/generated/google/feature-graphic-1024x500.png",
+      "width": 1024,
+      "height": 500
+    }
+  ]
+}

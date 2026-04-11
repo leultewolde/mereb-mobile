@@ -29,6 +29,8 @@ describe('mobile stages', () => {
       stage: 'dev',
       appScheme: 'mereb-dev',
       apiUrl: 'https://api-dev.mereb.app',
+      privacyUrl: 'https://dev.mereb.app/privacy',
+      supportUrl: 'https://dev.mereb.app/support',
       graphqlUrl: 'https://api-dev.mereb.app/graphql',
       flagsUrl: 'https://api-dev.mereb.app/flags',
       inviteRedeemUrl: 'https://api-dev.mereb.app/invite/redeem',
@@ -43,6 +45,8 @@ describe('mobile stages', () => {
       stage: 'stg',
       appScheme: 'mereb-stg',
       apiUrl: 'https://api-stg.mereb.app',
+      privacyUrl: 'https://stg.mereb.app/privacy',
+      supportUrl: 'https://stg.mereb.app/support',
       keycloak: {
         url: 'https://auth.mereb.app',
         realm: 'mereb-stg',
@@ -54,6 +58,8 @@ describe('mobile stages', () => {
       stage: 'prd',
       appScheme: 'mereb',
       apiUrl: 'https://api.mereb.app',
+      privacyUrl: 'https://mereb.app/privacy',
+      supportUrl: 'https://mereb.app/support',
       keycloak: {
         url: 'https://auth.mereb.app',
         realm: 'mereb',
@@ -73,6 +79,8 @@ describe('mobile stages', () => {
     expect(config.graphqlUrl).toBe('http://192.168.1.30:8000/graphql')
     expect(config.flagsUrl).toBe('http://192.168.1.30:8000/flags')
     expect(config.inviteRedeemUrl).toBe('http://192.168.1.30:8000/invite/redeem')
+    expect(config.privacyUrl).toBe('http://localhost:5173/privacy')
+    expect(config.supportUrl).toBe('http://localhost:5173/support')
     expect(config.keycloak).toEqual({
       url: 'http://192.168.1.30:8081',
       realm: 'social-local',

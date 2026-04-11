@@ -1,7 +1,8 @@
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native'
 import type { PropsWithChildren } from 'react'
 import { usePathname, useRouter } from 'expo-router'
 import { tokens } from '@mereb/tokens/native'
+import { config } from '@mobile/config'
 import { useAuth } from '../providers/AppProviders'
 import { useFlags } from '../providers/Flags'
 
@@ -36,12 +37,25 @@ export function AuthGate({ children }: PropsWithChildren) {
   const { flags, loading: flagsLoading, error: flagsError } = useFlags()
 
   const isPublicRoute = pathname === '/register/invite'
+  const accountCreationEnabled = !flagsLoading && !flagsError && flags.mobileAccountCreationEnabled
   const registrationAction: RegistrationAction =
-    flagsLoading || Boolean(flagsError)
+    !accountCreationEnabled
       ? 'none'
       : flags.inviteOnlyRegistration
         ? 'invite'
         : 'self-register'
+
+  const openExternalUrl = (url: string) => {
+    if (!url.trim()) {
+      return
+    }
+
+    void Linking.openURL(url).catch((error) => {
+      if (__DEV__) {
+        console.warn(`Failed to open external URL: ${url}`, error)
+      }
+    })
+  }
 
   if (!isReady) {
     if (isPublicRoute) {
@@ -88,9 +102,22 @@ export function AuthGate({ children }: PropsWithChildren) {
           {!isAuthConfigured ? (
             <Text style={styles.notice}>Missing auth config: {missingConfigKeys.join(', ')}</Text>
           ) : null}
+          {!flagsLoading && !flagsError && !flags.mobileAccountCreationEnabled ? (
+            <Text style={styles.notice}>
+              Mobile beta access is currently login-only. Contact support if your account still needs onboarding.
+            </Text>
+          ) : null}
           <Text style={styles.notice}>
             Admin accounts are provisioned through a secure operations workflow. Contact the platform operations team to request elevated access.
           </Text>
+          <View style={styles.linkRow}>
+            <Pressable accessibilityRole="button" onPress={() => openExternalUrl(config.supportUrl)}>
+              <Text style={styles.linkLabel}>Support</Text>
+            </Pressable>
+            <Pressable accessibilityRole="button" onPress={() => openExternalUrl(config.privacyUrl)}>
+              <Text style={styles.linkLabel}>Privacy policy</Text>
+            </Pressable>
+          </View>
         </View>
       </View>
     )
@@ -178,5 +205,15 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
     color: color.textSubdued
+  },
+  linkRow: {
+    marginTop: 18,
+    flexDirection: 'row',
+    gap: spacing.lg
+  },
+  linkLabel: {
+    color: color.primary,
+    fontSize: 13,
+    fontWeight: '600'
   }
 })

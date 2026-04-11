@@ -1,10 +1,13 @@
 import { config } from '@mobile/config'
 import { createContext, type PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react'
 
-type FlagsState = Record<string, boolean>
+export type PublicFlags = Record<string, boolean> & {
+  inviteOnlyRegistration: boolean
+  mobileAccountCreationEnabled: boolean
+}
 
 type FlagsContextValue = {
-  flags: FlagsState
+  flags: PublicFlags
   loading: boolean
   error?: string
 }
@@ -14,12 +17,15 @@ type FlagsProviderProps = PropsWithChildren<{
 }>
 
 const FlagsContext = createContext<FlagsContextValue>({
-  flags: {},
+  flags: {
+    inviteOnlyRegistration: false,
+    mobileAccountCreationEnabled: config.stage !== 'prd'
+  },
   loading: false,
   error: undefined
 })
 
-function flagsChanged(prev: FlagsState, next: FlagsState): boolean {
+function flagsChanged(prev: PublicFlags, next: PublicFlags): boolean {
   const prevKeys = Object.keys(prev)
   const nextKeys = Object.keys(next)
 
@@ -40,7 +46,14 @@ export function FlagsProvider({
   token,
   children
 }: Readonly<FlagsProviderProps>): JSX.Element {
-  const [flags, setFlags] = useState<FlagsState>({})
+  const defaultFlags = useMemo<PublicFlags>(
+    () => ({
+      inviteOnlyRegistration: false,
+      mobileAccountCreationEnabled: config.stage !== 'prd'
+    }),
+    []
+  )
+  const [flags, setFlags] = useState<PublicFlags>(defaultFlags)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>()
 
@@ -53,7 +66,7 @@ export function FlagsProvider({
 
   useEffect(() => {
     if (!endpoint) {
-      setFlags({})
+      setFlags(defaultFlags)
       setLoading(false)
       setError(undefined)
       return
@@ -81,7 +94,7 @@ export function FlagsProvider({
 
         if (!response.ok) {
           if (response.status === 401 && !cancelled) {
-            setFlags({})
+            setFlags(defaultFlags)
             setError(undefined)
           } else if (!cancelled) {
             setError(`Flags request failed (${response.status})`)
@@ -89,10 +102,14 @@ export function FlagsProvider({
           return
         }
 
-        const data = (await response.json()) as FlagsState
+        const data = (await response.json()) as Record<string, boolean>
+        const nextFlags = {
+          ...defaultFlags,
+          ...data
+        }
         if (!cancelled) {
           setFlags((previous) =>
-            flagsChanged(previous, data) ? data : previous
+            flagsChanged(previous, nextFlags) ? nextFlags : previous
           )
           setError(undefined)
         }
@@ -116,7 +133,7 @@ export function FlagsProvider({
       cancelled = true
       controller.abort()
     }
-  }, [endpoint, token])
+  }, [defaultFlags, endpoint, token])
 
   return <FlagsContext.Provider value={{ flags, loading, error }}>{children}</FlagsContext.Provider>
 }

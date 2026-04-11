@@ -74,6 +74,8 @@ function resolveRuntimeLocalDefaults(baseConfig: StageConfig, runtimeHost: strin
 
   const apiUrl = replaceLoopbackHost(baseConfig.apiUrl, runtimeHost)
   const keycloakUrl = replaceLoopbackHost(baseConfig.keycloak.url, runtimeHost)
+  const privacyUrl = replaceLoopbackHost(baseConfig.privacyUrl, runtimeHost)
+  const supportUrl = replaceLoopbackHost(baseConfig.supportUrl, runtimeHost)
 
   return {
     ...baseConfig,
@@ -81,6 +83,8 @@ function resolveRuntimeLocalDefaults(baseConfig: StageConfig, runtimeHost: strin
     graphqlUrl: `${apiUrl}/graphql`,
     flagsUrl: `${apiUrl}/flags`,
     inviteRedeemUrl: `${apiUrl}/invite/redeem`,
+    privacyUrl,
+    supportUrl,
     keycloak: {
       ...baseConfig.keycloak,
       url: keycloakUrl
@@ -96,6 +100,12 @@ const runtimeExtraFlagsUrl = stage === 'local' ? normalizeLocalUrl(runtimeExtra.
 const runtimeExtraInviteRedeemUrl = stage === 'local'
   ? normalizeLocalUrl(runtimeExtra.INVITE_REDEEM_URL, runtimeHost)
   : runtimeExtra.INVITE_REDEEM_URL
+const runtimeExtraPrivacyUrl = stage === 'local'
+  ? normalizeLocalUrl(runtimeExtra.PRIVACY_URL, runtimeHost)
+  : runtimeExtra.PRIVACY_URL
+const runtimeExtraSupportUrl = stage === 'local'
+  ? normalizeLocalUrl(runtimeExtra.SUPPORT_URL, runtimeHost)
+  : runtimeExtra.SUPPORT_URL
 const runtimeExtraKeycloakUrl = stage === 'local'
   ? normalizeLocalUrl(runtimeExtra.KEYCLOAK_URL ?? runtimeExtra.KC_URL, runtimeHost)
   : runtimeExtra.KEYCLOAK_URL ?? runtimeExtra.KC_URL
@@ -109,6 +119,8 @@ export const config: Omit<StageConfig, 'extra'> & { pushRegistrationEnabled: boo
   flagsUrl: pick(runtimeExtraFlagsUrl, runtimeStageDefaults.flagsUrl),
   inviteRedeemUrl: pick(runtimeExtraInviteRedeemUrl, runtimeStageDefaults.inviteRedeemUrl),
   apiUrl: pick(runtimeExtraApiUrl, runtimeStageDefaults.apiUrl),
+  privacyUrl: pick(runtimeExtraPrivacyUrl, runtimeStageDefaults.privacyUrl),
+  supportUrl: pick(runtimeExtraSupportUrl, runtimeStageDefaults.supportUrl),
   appScheme: pick(runtimeExtra.APP_SCHEME, runtimeStageDefaults.appScheme),
   easProjectId: pick(runtimeExtra.EAS_PROJECT_ID, runtimeStageDefaults.easProjectId),
   keycloak: {

@@ -17,10 +17,12 @@ const stage = resolveMobileStage(process.env.APP_STAGE)
 const stageConfig = resolveStageConfig(stage, process.env)
 
 const config: ExpoConfig = {
+  owner: 'rmhy',
   name: stageConfig.appName,
   slug: 'mereb-social',
   scheme: stageConfig.appScheme,
   version: '1.0.0',
+  description: 'Private team network for updates, profiles, and messaging across the Mereb platform.',
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'light',
@@ -31,10 +33,14 @@ const config: ExpoConfig = {
   },
   ios: {
     bundleIdentifier: stageConfig.iosBundleIdentifier,
-    supportsTablet: false
+    supportsTablet: false,
+    infoPlist: {
+      ITSAppUsesNonExemptEncryption: false
+    }
   },
   android: {
     package: stageConfig.androidPackage,
+    blockedPermissions: ['android.permission.RECORD_AUDIO'],
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#FFF1F4'
@@ -52,6 +58,15 @@ const config: ExpoConfig = {
   plugins: [
     'expo-asset',
     'expo-font',
+    'expo-system-ui',
+    [
+      'expo-image-picker',
+      {
+        photosPermission: 'Allow Mereb Social to access your photos so you can update your avatar and attach images to posts.',
+        cameraPermission: false,
+        microphonePermission: false
+      }
+    ],
     'expo-router',
     'expo-secure-store',
     [
@@ -63,7 +78,16 @@ const config: ExpoConfig = {
       }
     ]
   ],
-  extra: stageConfig.extra
+  extra: {
+    ...stageConfig.extra,
+    ...(stageConfig.easProjectId
+      ? {
+          eas: {
+            projectId: stageConfig.easProjectId
+          }
+        }
+      : {})
+  }
 }
 
 export default config

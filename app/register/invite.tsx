@@ -101,6 +101,7 @@ export default function InviteRedeemScreen() {
   })
 
   const inviteOnlyEnabled = Boolean(flags.inviteOnlyRegistration)
+  const mobileAccountCreationEnabled = Boolean(flags.mobileAccountCreationEnabled)
   const inviteRedeemUrl = useMemo(() => config.inviteRedeemUrl, [])
 
   useEffect(() => {
@@ -115,6 +116,10 @@ export default function InviteRedeemScreen() {
 
   if (isAuthenticated) {
     return <Redirect href="/(tabs)/feed" />
+  }
+
+  if (!loading && (!mobileAccountCreationEnabled || !inviteOnlyEnabled || Boolean(error))) {
+    return <Redirect href="/" />
   }
 
   const update = <K extends keyof InviteRegistrationForm>(key: K, value: InviteRegistrationForm[K]) => {
@@ -184,12 +189,6 @@ export default function InviteRedeemScreen() {
             <Text style={styles.subtleText}>Checking registration policy…</Text>
           </View>
         ) : null}
-        {error ? <Text style={styles.notice}>{error}</Text> : null}
-        {!loading && !error && !inviteOnlyEnabled ? (
-          <Text style={styles.notice}>
-            Invite-based onboarding is not enabled for this environment right now.
-          </Text>
-        ) : null}
         {submitError ? <Text style={styles.errorText}>{submitError}</Text> : null}
         {submitSuccess ? <Text style={styles.successText}>{submitSuccess}</Text> : null}
 
@@ -210,7 +209,7 @@ export default function InviteRedeemScreen() {
         <View style={styles.actions}>
           <ActionButton
             label={isSubmitting ? 'Redeeming invite…' : 'Create account'}
-            disabled={loading || Boolean(error) || !inviteOnlyEnabled || isSubmitting}
+            disabled={loading || !inviteOnlyEnabled || !mobileAccountCreationEnabled || isSubmitting}
             onPress={() => void handleSubmit()}
           />
           <ActionButton label="Back to login" variant="secondary" onPress={() => router.back()} />

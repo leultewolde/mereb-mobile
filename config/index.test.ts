@@ -39,6 +39,8 @@ describe('runtime config', () => {
     expect(config.graphqlUrl).toBe('http://192.168.1.30:8000/graphql')
     expect(config.flagsUrl).toBe('http://192.168.1.30:8000/flags')
     expect(config.inviteRedeemUrl).toBe('http://192.168.1.30:8000/invite/redeem')
+    expect(config.privacyUrl).toBe('http://192.168.1.30:5173/privacy')
+    expect(config.supportUrl).toBe('http://192.168.1.30:5173/support')
     expect(config.keycloak.url).toBe('http://192.168.1.30:8081')
   })
 
@@ -51,6 +53,8 @@ describe('runtime config', () => {
           GRAPHQL_URL: 'http://localhost:8000/graphql',
           FLAGS_URL: 'http://localhost:8000/flags',
           INVITE_REDEEM_URL: 'http://localhost:8000/invite/redeem',
+          PRIVACY_URL: 'http://localhost:5173/privacy',
+          SUPPORT_URL: 'http://localhost:5173/support',
           KEYCLOAK_URL: 'http://localhost:8081'
         },
         hostUri: '192.168.1.30:8081'
@@ -62,6 +66,8 @@ describe('runtime config', () => {
     expect(config.graphqlUrl).toBe('http://192.168.1.30:8000/graphql')
     expect(config.flagsUrl).toBe('http://192.168.1.30:8000/flags')
     expect(config.inviteRedeemUrl).toBe('http://192.168.1.30:8000/invite/redeem')
+    expect(config.privacyUrl).toBe('http://192.168.1.30:5173/privacy')
+    expect(config.supportUrl).toBe('http://192.168.1.30:5173/support')
     expect(config.keycloak.url).toBe('http://192.168.1.30:8081')
   })
 
@@ -74,6 +80,8 @@ describe('runtime config', () => {
           GRAPHQL_URL: 'http://10.0.2.2:8000/graphql',
           FLAGS_URL: 'http://10.0.2.2:8000/flags',
           INVITE_REDEEM_URL: 'http://10.0.2.2:8000/invite/redeem',
+          PRIVACY_URL: 'http://10.0.2.2:5173/privacy',
+          SUPPORT_URL: 'http://10.0.2.2:5173/support',
           KEYCLOAK_URL: 'http://10.0.2.2:8081'
         },
         hostUri: '192.168.1.30:8081'
@@ -85,6 +93,8 @@ describe('runtime config', () => {
     expect(config.graphqlUrl).toBe('http://10.0.2.2:8000/graphql')
     expect(config.flagsUrl).toBe('http://10.0.2.2:8000/flags')
     expect(config.inviteRedeemUrl).toBe('http://10.0.2.2:8000/invite/redeem')
+    expect(config.privacyUrl).toBe('http://10.0.2.2:5173/privacy')
+    expect(config.supportUrl).toBe('http://10.0.2.2:5173/support')
     expect(config.keycloak.url).toBe('http://10.0.2.2:8081')
   })
 })

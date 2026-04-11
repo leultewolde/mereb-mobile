@@ -1,4 +1,7 @@
 {
+  "cli": {
+    "appVersionSource": "remote"
+  },
   "build": {
     "local": {
       "developmentClient": true,
@@ -23,13 +26,25 @@
       }
     },
     "prd": {
+      "distribution": "store",
       "channel": "prd",
+      "autoIncrement": true,
       "env": {
         "APP_STAGE": "prd"
       }
     }
   },
   "submit": {
-    "prd": {}
+    "prd": {
+      "android": {
+        "track": "internal",
+        "releaseStatus": "completed",
+        "changesNotSentForReview": true
+      },
+      "ios": {
+        "ascAppId": "6762027209",
+        "metadataPath": "./store.config.json"
+      }
+    }
   }
 }

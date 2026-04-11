@@ -4,11 +4,6 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@mereb/app-feed/native": ["../../packages/app-feed/dist/index.d.ts"],
-      "@mereb/app-messaging/native": ["../../packages/app-messaging/dist/native.d.ts"],
-      "@mereb/app-profile/native": ["../../packages/app-profile/dist/index.d.ts"],
-      "@mereb/tokens/native": ["../../packages/tokens/src/native.d.ts"],
-      "@ui-native/*": ["../../packages/ui-native/src/*"],
       "@mobile/*": ["./*"]
     },
     "types": ["expo-router", "node"]

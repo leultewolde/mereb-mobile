@@ -1,0 +1,24 @@
+{
+  "configVersion": 0,
+  "apple": {
+    "info": {
+      "en-US": {
+        "title": "Mereb Social",
+        "subtitle": "Private team network",
+        "description": "Mereb Social keeps teams connected with a focused mobile experience for updates, profiles, and direct messaging across the Mereb platform.",
+        "keywords": [
+          "mereb",
+          "team",
+          "social",
+          "messaging",
+          "updates"
+        ],
+        "releaseNotes": "Initial beta release for internal and closed testing.",
+        "promoText": "Secure team updates, profiles, and messaging in one mobile app.",
+        "marketingUrl": "https://mereb.app",
+        "supportUrl": "https://mereb.app/support",
+        "privacyPolicyUrl": "https://mereb.app/privacy"
+      }
+    }
+  }
+}
