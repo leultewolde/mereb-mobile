@@ -37,7 +37,7 @@
   "submit": {
     "prd": {
       "android": {
-        "track": "internal",
+        "track": "closed",
         "releaseStatus": "draft",
         "changesNotSentForReview": true
       },

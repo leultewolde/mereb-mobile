@@ -1,14 +1,30 @@
 import type { ExpoConfig } from 'expo/config'
+
+type MobileStage = 'local' | 'dev' | 'stg' | 'prd'
+
 const { resolveMobileStage, resolveStageConfig } = require('./config/stages.shared.cjs') as {
-  resolveMobileStage(value?: string | null): 'local' | 'dev' | 'stg' | 'prd'
+  resolveMobileStage(value?: string | null): MobileStage
   resolveStageConfig(
-    stage: 'local' | 'dev' | 'stg' | 'prd',
+    stage: MobileStage,
     environment?: Record<string, string | undefined>
   ): {
+    stage: MobileStage
     appName: string
     appScheme: string
     iosBundleIdentifier: string
     androidPackage: string
+    graphqlUrl: string
+    flagsUrl: string
+    inviteRedeemUrl: string
+    apiUrl: string
+    privacyUrl: string
+    supportUrl: string
+    keycloak: {
+      url: string
+      realm: string
+      clientId: string
+    }
+    easProjectId?: string
     extra: Record<string, string>
   }
 }
@@ -43,7 +59,7 @@ const config: ExpoConfig = {
     blockedPermissions: ['android.permission.RECORD_AUDIO'],
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
-      backgroundColor: '#FFF1F4'
+      backgroundColor: '#F43B57'
     }
   },
   web: {
