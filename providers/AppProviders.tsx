@@ -72,6 +72,8 @@ type TokenExchangeError = Error & {
   status?: number
 }
 
+type ApolloCacheDiffOptions = Parameters<InMemoryCache['diff']>[0]
+
 function decodeBase64Url(segment: string): string {
   let output = segment.replaceAll('-', '+').replaceAll('_', '/')
   const pad = output.length % 4
@@ -87,6 +89,15 @@ function decodeBase64Url(segment: string): string {
   throw new Error('No base64 decoder available')
 }
 
+function normalizeJwtDecodedPayload(decoded: string): string {
+  return decodeURIComponent(
+    decoded
+      .split('')
+      .map((char) => `%${(char.codePointAt(0) ?? 0).toString(16).padStart(2, '0')}`)
+      .join('')
+  )
+}
+
 function parseJwt(token?: string): TokenPayload | undefined {
   if (!token) return undefined
   const parts = token.split('.')
@@ -94,12 +105,7 @@ function parseJwt(token?: string): TokenPayload | undefined {
   try {
     const decoded = decodeBase64Url(parts[1])
     try {
-      const normalized = decodeURIComponent(
-        decoded
-          .split('')
-          .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, '0')}`)
-          .join('')
-      )
+      const normalized = normalizeJwtDecodedPayload(decoded)
       return JSON.parse(normalized) as TokenPayload
     } catch {
       return JSON.parse(decoded) as TokenPayload
@@ -137,6 +143,28 @@ function buildProfile(token?: string): AuthProfile | undefined {
   }
 }
 
+function patchApolloCacheDiff(cache: InMemoryCache) {
+  // Apollo Client 3.14 removed support for `canonizeResults`.
+  // Some libraries still pass it to `cache.diff`, which now prints a warning.
+  // Strip the deprecated option so we can upgrade without noisy warnings.
+  const originalDiff = cache.diff.bind(cache)
+  let canonizeWarningLogged = false
+
+  cache.diff = ((options) => {
+    if (options && 'canonizeResults' in options) {
+      const shouldWarn = Boolean((options as unknown as Record<string, unknown>).canonizeResults)
+      if (__DEV__ && shouldWarn && !canonizeWarningLogged) {
+        canonizeWarningLogged = true
+        console.warn('Removed deprecated Apollo `canonizeResults` option from `cache.diff` call.')
+      }
+      const sanitized: ApolloCacheDiffOptions = { ...options }
+      delete (sanitized as unknown as Record<string, unknown>).canonizeResults
+      return originalDiff(sanitized)
+    }
+    return originalDiff(options)
+  }) as typeof cache.diff
+}
+
 function buildIssuerUrl() {
   return `${config.keycloak.url.replace(/\/$/, '')}/realms/${config.keycloak.realm}`
 }
@@ -163,9 +191,20 @@ function buildTokenExchangeError(
   return error
 }
 
+function extractErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message.trim().toLowerCase()
+  }
+
+  if (typeof error === 'string') {
+    return error.trim().toLowerCase()
+  }
+
+  return ''
+}
+
 function isInvalidGrantError(error: unknown): boolean {
-  const message =
-    error instanceof Error ? error.message.trim().toLowerCase() : typeof error === 'string' ? error.trim().toLowerCase() : ''
+  const message = extractErrorMessage(error)
 
   return (
     (typeof error === 'object' &&
@@ -263,48 +302,26 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       return
     }
 
-    void apolloClient.clearStore().catch((error) => {
-      console.warn('Failed to clear Apollo cache after auth change', error)
+    const syncStore = token ? apolloClient.resetStore() : apolloClient.clearStore()
+    void syncStore.catch((error) => {
+      console.warn('Failed to synchronize Apollo cache after auth change', error)
     })
   }, [apolloClient, token])
 
   useEffect(() => {
     let cancelled = false
 
-    ;(async () => {
-      try {
-        const cache = new InMemoryCache()
+    const initializeApolloClient = async () => {
+      const cache = new InMemoryCache()
 
-        // Apollo Client 3.14 removed support for `canonizeResults`.
-        // Some libraries still pass it to `cache.diff`, which now prints a warning.
-        // Strip the deprecated option so we can upgrade without noisy warnings.
-        type DiffOptions = Parameters<typeof cache.diff>[0]
-        const originalDiff = cache.diff.bind(cache)
-        let canonizeWarningLogged = false
-        cache.diff = ((options) => {
-          if (options && 'canonizeResults' in options) {
-            const shouldWarn = Boolean((options as unknown as Record<string, unknown>).canonizeResults)
-            if (__DEV__ && shouldWarn && !canonizeWarningLogged) {
-              canonizeWarningLogged = true
-              console.warn('Removed deprecated Apollo `canonizeResults` option from `cache.diff` call.')
-            }
-            const sanitized: DiffOptions = { ...options }
-            delete (sanitized as unknown as Record<string, unknown>).canonizeResults
-            return originalDiff(sanitized)
-          }
-          return originalDiff(options)
-        }) as typeof cache.diff
+      patchApolloCacheDiff(cache)
+      await persistCache({
+        cache,
+        storage: new AsyncStorageWrapper(AsyncStorage)
+      })
 
-        await persistCache({
-          cache,
-          storage: new AsyncStorageWrapper(AsyncStorage)
-        })
-
-        if (cancelled) {
-          return
-        }
-
-        const link = new HttpLink({
+      return new ApolloClient({
+        link: new HttpLink({
           uri: config.graphqlUrl,
           fetch: (uri, options = {}) => {
             const headers = {
@@ -313,63 +330,68 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
             }
             return fetch(uri, { ...options, headers })
           }
-        })
+        }),
+        cache
+      })
+    }
 
-        const client = new ApolloClient({
-          link,
-          cache
-        })
+    const hydrateRefreshToken = async () => {
+      const storedRefresh = await SecureStore.getItemAsync(REFRESH_TOKEN_STORAGE_KEY)
+      if (!storedRefresh || !isAuthConfigured || cancelled) {
+        return
+      }
+
+      try {
+        const discovery = await AuthSession.fetchDiscoveryAsync(buildIssuerUrl())
+        const payload = await exchangeTokens(
+          discovery,
+          {
+            grant_type: 'refresh_token',
+            client_id: config.keycloak.clientId,
+            refresh_token: storedRefresh
+          },
+          'Refresh token exchange'
+        )
 
         if (cancelled) {
           return
         }
 
-        setApolloClient(client)
-
-        const storedRefresh = await SecureStore.getItemAsync(REFRESH_TOKEN_STORAGE_KEY)
-        if (!cancelled && storedRefresh && isAuthConfigured) {
-          try {
-            const discovery = await AuthSession.fetchDiscoveryAsync(buildIssuerUrl())
-            const payload = await exchangeTokens(
-              discovery,
-              {
-                grant_type: 'refresh_token',
-                client_id: config.keycloak.clientId,
-                refresh_token: storedRefresh
-              },
-              'Refresh token exchange'
-            )
-
-            if (cancelled) {
-              return
-            }
-
-            if (payload.access_token) {
-              setToken(payload.access_token)
-            }
-
-            if (payload.refresh_token) {
-              await SecureStore.setItemAsync(REFRESH_TOKEN_STORAGE_KEY, payload.refresh_token)
-            }
-          } catch (error) {
-            if (isInvalidGrantError(error)) {
-              await SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY)
-            } else {
-              console.warn('Refresh token exchange failed', error)
-            }
-          }
+        if (payload.access_token) {
+          setToken(payload.access_token)
         }
 
-        if (!cancelled) {
-          setReady(true)
+        if (payload.refresh_token) {
+          await SecureStore.setItemAsync(REFRESH_TOKEN_STORAGE_KEY, payload.refresh_token)
         }
       } catch (error) {
+        if (isInvalidGrantError(error)) {
+          await SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY)
+        } else {
+          console.warn('Refresh token exchange failed', error)
+        }
+      }
+    }
+
+    const bootstrap = async () => {
+      try {
+        const client = await initializeApolloClient()
+        if (cancelled) {
+          return
+        }
+
+        setApolloClient(client)
+        await hydrateRefreshToken()
+      } catch (error) {
         console.error('Failed to initialise Apollo client', error)
+      } finally {
         if (!cancelled) {
           setReady(true)
         }
       }
-    })()
+    }
+
+    void bootstrap()
 
     return () => {
       cancelled = true

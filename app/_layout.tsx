@@ -40,6 +40,10 @@ export default function RootLayout() {
             name="register/invite"
             options={{ headerTitle: 'Redeem invite' }}
           />
+          <Stack.Screen
+            name="oauth2redirect/[provider]"
+            options={{ headerShown: false }}
+          />
         </Stack>
       </AuthGate>
     </AppProviders>

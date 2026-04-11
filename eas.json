@@ -38,8 +38,8 @@
     "prd": {
       "android": {
         "track": "internal",
-        "releaseStatus": "draft",
-        "changesNotSentForReview": true
+        "releaseStatus": "completed",
+        "changesNotSentForReview": false
       },
       "ios": {
         "ascAppId": "6762027209",

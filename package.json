@@ -32,7 +32,7 @@
     "@expo/metro-runtime": "~6.1.2",
     "@expo/vector-icons": "^15.1.1",
     "@mereb/app-feed": "^0.0.11",
-    "@mereb/app-messaging": "^0.0.7",
+    "@mereb/app-messaging": "^0.0.8",
     "@mereb/app-profile": "^0.0.9",
     "@mereb/tokens": "^0.0.9",
     "@react-native-async-storage/async-storage": "2.2.0",
