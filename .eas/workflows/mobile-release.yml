@@ -1,0 +1,96 @@
+name: mobile-release
+
+on:
+  push:
+    tags:
+      - v*
+      - mobile-v*
+  workflow_dispatch:
+
+defaults:
+  tools:
+    node: "20"
+    corepack: true
+    pnpm: "10.30.1"
+
+concurrency:
+  cancel_in_progress: false
+  group: ${{ workflow.filename }}-${{ github.ref }}
+
+jobs:
+  validate:
+    name: Validate mobile repo
+    runs_on: linux-medium
+    environment: production
+    env:
+      APP_STAGE: prd
+    steps:
+      - uses: eas/checkout
+      - uses: eas/install_node_modules
+      - name: Mobile config contract test
+        run: pnpm exec vitest run config/stages.test.ts config/index.test.ts
+      - name: Typecheck mobile app
+        run: pnpm exec tsc --noEmit
+      - name: Lint mobile app
+        run: pnpm exec eslint .
+
+  build_ios:
+    name: Build iOS
+    needs:
+      - validate
+    type: build
+    environment: production
+    env:
+      APP_STAGE: prd
+    params:
+      platform: ios
+      profile: prd
+
+  build_android:
+    name: Build Android
+    needs:
+      - validate
+    type: build
+    environment: production
+    env:
+      APP_STAGE: prd
+    params:
+      platform: android
+      profile: prd
+
+  submit_ios:
+    name: Submit iOS to TestFlight
+    needs:
+      - build_ios
+    type: submit
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
+      profile: prd
+
+  submit_android:
+    name: Submit Android to Play internal testing
+    needs:
+      - build_android
+    type: submit
+    params:
+      build_id: ${{ needs.build_android.outputs.build_id }}
+      profile: prd
+
+  next_steps:
+    name: Release summary
+    needs:
+      - build_ios
+      - build_android
+      - submit_ios
+      - submit_android
+    type: doc
+    params:
+      md: |
+        # Mobile release submitted
+
+        - Workflow run: ${{ workflow.url }}
+        - Source ref: `${{ github.ref_name || 'manual-run' }}`
+        - iOS build ID: `${{ needs.build_ios.outputs.build_id }}`
+        - Android build ID: `${{ needs.build_android.outputs.build_id }}`
+        - iOS submission: App Store Connect / TestFlight via submit profile `prd`
+        - Android submission: Google Play internal testing via submit profile `prd`
