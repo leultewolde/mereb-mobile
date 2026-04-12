@@ -31,6 +31,25 @@ const { resolveMobileStage, resolveStageConfig } = require('./config/stages.shar
 
 const stage = resolveMobileStage(process.env.APP_STAGE)
 const stageConfig = resolveStageConfig(stage, process.env)
+const associatedDomain = stage === 'local' ? undefined : new URL(stageConfig.privacyUrl).host
+const androidIntentFilters =
+  associatedDomain
+    ? [
+        {
+          action: 'VIEW',
+          autoVerify: true,
+          category: ['BROWSABLE', 'DEFAULT'],
+          data: [
+            {
+              scheme: 'https',
+              host: associatedDomain,
+              pathPrefix: '/'
+            }
+          ]
+        }
+      ]
+    : undefined
+const iosAssociatedDomains = associatedDomain ? [`applinks:${associatedDomain}`] : undefined
 
 const config: ExpoConfig = {
   owner: 'rmhy',
@@ -50,6 +69,7 @@ const config: ExpoConfig = {
   ios: {
     bundleIdentifier: stageConfig.iosBundleIdentifier,
     supportsTablet: false,
+    associatedDomains: iosAssociatedDomains,
     infoPlist: {
       ITSAppUsesNonExemptEncryption: false
     }
@@ -57,6 +77,7 @@ const config: ExpoConfig = {
   android: {
     package: stageConfig.androidPackage,
     blockedPermissions: ['android.permission.RECORD_AUDIO'],
+    intentFilters: androidIntentFilters,
     adaptiveIcon: {
       foregroundImage: './assets/adaptive-icon.png',
       backgroundColor: '#F43B57'

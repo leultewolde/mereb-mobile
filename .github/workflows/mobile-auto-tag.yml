@@ -1,0 +1,124 @@
+name: mobile-auto-tag
+
+on:
+  pull_request_target:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: mobile-auto-tag-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  create_release_tag:
+    if: ${{ github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Resolve release label
+        id: release
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const labels = context.payload.pull_request.labels.map(({ name }) => name);
+            const releaseLabels = ['release:patch', 'release:minor', 'release:major']
+              .filter((label) => labels.includes(label));
+
+            if (releaseLabels.length === 0) {
+              core.setOutput('should_release', 'false');
+              core.setOutput('reason', 'No release label present on the merged PR.');
+              return;
+            }
+
+            if (releaseLabels.length > 1) {
+              core.setFailed(`Expected exactly one release label but found ${releaseLabels.join(', ')}.`);
+              return;
+            }
+
+            const label = releaseLabels[0];
+            core.setOutput('should_release', 'true');
+            core.setOutput('label', label);
+            core.setOutput('bump', label.replace('release:', ''));
+
+      - name: Summarize skipped release
+        if: steps.release.outputs.should_release != 'true'
+        run: |
+          {
+            echo "### Mobile auto-tagging"
+            echo "- PR: #${{ github.event.pull_request.number }}"
+            echo "- Result: skipped"
+            echo "- Reason: ${{ steps.release.outputs.reason }}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check for existing release tag on merge commit
+        if: steps.release.outputs.should_release == 'true'
+        id: existing
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          set -euo pipefail
+
+          existing_tag="$(git tag --points-at "$MERGE_SHA" --list 'v*' | head -n 1)"
+          echo "existing_tag=$existing_tag" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$existing_tag" ]; then
+            {
+              echo "### Mobile auto-tagging"
+              echo "- PR: #${{ github.event.pull_request.number }}"
+              echo "- Selected label: \`${{ steps.release.outputs.label }}\`"
+              echo "- Result: skipped"
+              echo "- Existing tag on merge commit: \`$existing_tag\`"
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Compute next release tag
+        if: steps.release.outputs.should_release == 'true' && steps.existing.outputs.existing_tag == ''
+        id: version
+        run: node ./scripts/compute-next-tag.mjs "${{ steps.release.outputs.bump }}"
+
+      - name: Guard against duplicate computed tag
+        if: steps.release.outputs.should_release == 'true' && steps.existing.outputs.existing_tag == ''
+        env:
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+        run: |
+          set -euo pipefail
+
+          if git rev-parse "$NEXT_TAG" >/dev/null 2>&1; then
+            echo "Computed tag $NEXT_TAG already exists." >&2
+            exit 1
+          fi
+
+      - name: Create and push release tag
+        if: steps.release.outputs.should_release == 'true' && steps.existing.outputs.existing_tag == ''
+        env:
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          NEXT_TAG: ${{ steps.version.outputs.next_tag }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "$NEXT_TAG" "$MERGE_SHA" -m "Mobile release $NEXT_TAG for PR #${{ github.event.pull_request.number }}"
+          git push origin "$NEXT_TAG"
+
+      - name: Summarize created release tag
+        if: steps.release.outputs.should_release == 'true' && steps.existing.outputs.existing_tag == ''
+        run: |
+          {
+            echo "### Mobile auto-tagging"
+            echo "- PR: #${{ github.event.pull_request.number }}"
+            echo "- Selected label: \`${{ steps.release.outputs.label }}\`"
+            echo "- Previous tag: \`${{ steps.version.outputs.previous_tag || 'none' }}\`"
+            echo "- New tag: \`${{ steps.version.outputs.next_tag }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
