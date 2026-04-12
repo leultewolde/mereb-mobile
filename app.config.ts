@@ -56,7 +56,7 @@ const config: ExpoConfig = {
   name: stageConfig.appName,
   slug: 'mereb-social',
   scheme: stageConfig.appScheme,
-  version: '1.0.0',
+  version: '1.0.1',
   description: 'Private team network for updates, profiles, and messaging across the Mereb platform.',
   orientation: 'portrait',
   icon: './assets/icon.png',
