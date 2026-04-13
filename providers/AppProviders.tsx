@@ -29,6 +29,7 @@ type AdminAccessLevel = 'full' | 'limited' | 'none'
 
 type TokenPayload = {
   sub?: string
+  exp?: number
   name?: string
   email?: string
   preferred_username?: string
@@ -61,6 +62,7 @@ type AuthContextValue = {
 
 const FULL_ADMIN_ROLES = new Set(['admin', 'mereb.admin', 'realm-admin'])
 const LIMITED_ADMIN_ROLES = new Set(['moderator', 'support', 'admin.viewer', 'mereb.staff'])
+const ACCESS_TOKEN_STORAGE_KEY = 'access_token'
 const REFRESH_TOKEN_STORAGE_KEY = 'refresh_token'
 
 type TokenExchangePayload = {
@@ -144,6 +146,20 @@ function buildProfile(token?: string): AuthProfile | undefined {
     roles,
     adminAccess: determineAdminAccess(roles)
   }
+}
+
+function isAccessTokenUsable(token?: string): boolean {
+  const payload = parseJwt(token)
+  if (!payload?.sub) {
+    return false
+  }
+
+  if (!payload.exp) {
+    return true
+  }
+
+  const now = Math.floor(Date.now() / 1000)
+  return payload.exp > now + 30
 }
 
 function patchApolloCacheDiff(cache: InMemoryCache) {
@@ -335,7 +351,13 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
     }
 
     const hydrateRefreshToken = async () => {
+      const storedAccess = await SecureStore.getItemAsync(ACCESS_TOKEN_STORAGE_KEY)
       const storedRefresh = await SecureStore.getItemAsync(REFRESH_TOKEN_STORAGE_KEY)
+
+      if (storedAccess && isAccessTokenUsable(storedAccess) && !cancelled) {
+        setToken(storedAccess)
+      }
+
       if (!storedRefresh || !isAuthConfigured || cancelled) {
         return
       }
@@ -357,6 +379,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         }
 
         if (payload.access_token) {
+          await SecureStore.setItemAsync(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
           setToken(payload.access_token)
         }
 
@@ -365,7 +388,11 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         }
       } catch (error) {
         if (isInvalidGrantError(error)) {
+          await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY)
           await SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY)
+          if (!cancelled) {
+            setToken(undefined)
+          }
         } else {
           console.warn('Refresh token exchange failed', error)
         }
@@ -435,7 +462,10 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         )
 
         if (payload.access_token) {
+          await SecureStore.setItemAsync(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
           setToken(payload.access_token)
+        } else {
+          await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY)
         }
 
         if (payload.refresh_token) {
@@ -465,6 +495,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       console.warn('Failed to unregister push device during logout', error)
     }
 
+    await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY)
     await SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY)
     setToken(undefined)
     setProfile(undefined)
