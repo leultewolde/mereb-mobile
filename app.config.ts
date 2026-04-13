@@ -19,6 +19,11 @@ const { resolveMobileStage, resolveStageConfig } = require('./config/stages.shar
     apiUrl: string
     privacyUrl: string
     supportUrl: string
+    sentry: {
+      dsn?: string
+      enabled: boolean
+      environment: MobileStage
+    }
     keycloak: {
       url: string
       realm: string
@@ -121,6 +126,14 @@ const config: ExpoConfig = {
         icon: './assets/notification-icon.png',
         color: '#F43B57',
         defaultChannel: 'messages'
+      }
+    ],
+    [
+      '@sentry/react-native/expo',
+      {
+        url: 'https://sentry.io/',
+        organization: process.env.SENTRY_ORG,
+        project: process.env.SENTRY_PROJECT
       }
     ],
     'expo-router',

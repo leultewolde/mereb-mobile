@@ -133,6 +133,13 @@ export const config: Omit<StageConfig, 'extra'> & { pushRegistrationEnabled: boo
   supportUrl: pick(runtimeExtraSupportUrl, runtimeStageDefaults.supportUrl),
   appScheme: pick(runtimeExtra.APP_SCHEME, runtimeStageDefaults.appScheme),
   easProjectId: pick(runtimeExtra.EAS_PROJECT_ID, runtimeStageDefaults.easProjectId),
+  sentry: {
+    dsn: trim(runtimeExtra.SENTRY_DSN) ?? runtimeStageDefaults.sentry.dsn,
+    enabled:
+      pickBoolean(runtimeExtra.SENTRY_ENABLED, runtimeStageDefaults.sentry.enabled) &&
+      Boolean(trim(runtimeExtra.SENTRY_DSN) ?? runtimeStageDefaults.sentry.dsn),
+    environment: runtimeStageDefaults.sentry.environment
+  },
   keycloak: {
     url: pick(runtimeExtraKeycloakUrl, runtimeStageDefaults.keycloak.url),
     realm: pick(runtimeExtra.KC_REALM, runtimeStageDefaults.keycloak.realm),

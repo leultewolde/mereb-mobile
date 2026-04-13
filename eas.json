@@ -12,6 +12,7 @@
       }
     },
     "dev": {
+      "environment": "development",
       "distribution": "internal",
       "channel": "dev",
       "env": {
@@ -19,6 +20,7 @@
       }
     },
     "stg": {
+      "environment": "preview",
       "distribution": "internal",
       "channel": "stg",
       "env": {
@@ -26,6 +28,7 @@
       }
     },
     "prd": {
+      "environment": "production",
       "distribution": "store",
       "channel": "prd",
       "autoIncrement": true,

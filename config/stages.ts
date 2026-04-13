@@ -14,6 +14,8 @@ export type StageExtra = {
   PRIVACY_URL: string
   SUPPORT_URL: string
   PUSH_REGISTRATION_ENABLED: string
+  SENTRY_DSN: string
+  SENTRY_ENABLED: string
 }
 
 export type StageConfig = {
@@ -29,6 +31,11 @@ export type StageConfig = {
   privacyUrl: string
   supportUrl: string
   pushRegistrationEnabled: boolean
+  sentry: {
+    dsn?: string
+    enabled: boolean
+    environment: MobileStage
+  }
   keycloak: {
     url: string
     realm: string
