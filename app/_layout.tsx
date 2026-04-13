@@ -37,6 +37,10 @@ export default function RootLayout() {
             options={{ headerTitle: 'New conversation' }}
           />
           <Stack.Screen
+            name="settings/notifications"
+            options={{ headerTitle: 'Notifications' }}
+          />
+          <Stack.Screen
             name="register/invite"
             options={{ headerTitle: 'Redeem invite' }}
           />

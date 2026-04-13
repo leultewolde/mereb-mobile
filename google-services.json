@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "23890713346",
+    "project_id": "mereb-social-895d9",
+    "storage_bucket": "mereb-social-895d9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:23890713346:android:7aa47c7bec682a1b28401b",
+        "android_client_info": {
+          "package_name": "com.mereb.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAc7DZ8Qz0si65CWmnyMdQXkMkprmxcVHY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

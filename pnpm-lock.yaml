@@ -29,6 +29,9 @@ importers:
       '@mereb/app-profile':
         specifier: ^0.0.9
         version: 0.0.9(@apollo/client@4.1.7(graphql@16.13.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(rxjs@7.8.2))(expo-image-picker@17.0.10(expo@54.0.33))(expo-router@6.0.23)(graphql@16.13.2)(react-dom@19.1.0(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      '@mereb/shared-graphql':
+        specifier: ^0.0.18
+        version: 0.0.18(@apollo/client@4.1.7(graphql@16.13.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(rxjs@7.8.2))(graphql@16.13.2)
       '@mereb/tokens':
         specifier: ^0.0.9
         version: 0.0.9
@@ -1123,6 +1126,12 @@ packages:
 
   '@mereb/shared-graphql@0.0.17':
     resolution: {integrity: sha512-6BqIUHgC7EDRljfN3BGhreB6XDrPk4VXqNXksMk5tA2Db4k944N5UBKLziIvifmrDLuIATErgnLohYYxVbiWSw==}
+    peerDependencies:
+      '@apollo/client': '>=4.0.0'
+      graphql: '>=16.0.0'
+
+  '@mereb/shared-graphql@0.0.18':
+    resolution: {integrity: sha512-/TpM0I9/KoIkhM3KrSmTffFr5i8ylmccKszndLGZlXXcGCYmGMAmCNzt18SY1YMz1Z7e9ypNXYKWvnW2b2sC/A==}
     peerDependencies:
       '@apollo/client': '>=4.0.0'
       graphql: '>=16.0.0'
@@ -6353,6 +6362,11 @@ snapshots:
       - react-dom
 
   '@mereb/shared-graphql@0.0.17(@apollo/client@4.1.7(graphql@16.13.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(rxjs@7.8.2))(graphql@16.13.2)':
+    dependencies:
+      '@apollo/client': 4.1.7(graphql@16.13.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(rxjs@7.8.2)
+      graphql: 16.13.2
+
+  '@mereb/shared-graphql@0.0.18(@apollo/client@4.1.7(graphql@16.13.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(rxjs@7.8.2))(graphql@16.13.2)':
     dependencies:
       '@apollo/client': 4.1.7(graphql@16.13.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(rxjs@7.8.2)
       graphql: 16.13.2

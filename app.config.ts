@@ -31,6 +31,16 @@ const { resolveMobileStage, resolveStageConfig } = require('./config/stages.shar
 
 const stage = resolveMobileStage(process.env.APP_STAGE)
 const stageConfig = resolveStageConfig(stage, process.env)
+const googleServicesFile =
+  stage === 'prd'
+    ? (() => {
+        try {
+          return require.resolve('./google-services.json')
+        } catch {
+          return undefined
+        }
+      })()
+    : undefined
 const associatedDomain = stage === 'local' ? undefined : new URL(stageConfig.privacyUrl).host
 const androidIntentFilters =
   associatedDomain
@@ -76,6 +86,7 @@ const config: ExpoConfig = {
   },
   android: {
     package: stageConfig.androidPackage,
+    ...(googleServicesFile ? { googleServicesFile } : {}),
     blockedPermissions: ['android.permission.RECORD_AUDIO'],
     intentFilters: androidIntentFilters,
     adaptiveIcon: {
@@ -102,6 +113,14 @@ const config: ExpoConfig = {
         photosPermission: 'Allow Mereb Social to access your photos so you can update your avatar and attach images to posts.',
         cameraPermission: false,
         microphonePermission: false
+      }
+    ],
+    [
+      'expo-notifications',
+      {
+        icon: './assets/notification-icon.png',
+        color: '#F43B57',
+        defaultChannel: 'messages'
       }
     ],
     'expo-router',
