@@ -19,6 +19,7 @@ import {
   useState
 } from 'react'
 import { config } from '@mobile/config'
+import { captureSentryException, setSentryUser } from '../monitoring/sentry'
 import { FlagsProvider } from './Flags'
 import {
   NotificationsProvider,
@@ -121,6 +122,17 @@ function parseJwt(token?: string): TokenPayload | undefined {
   }
 }
 
+function isAccessTokenUsable(token?: string): boolean {
+  const payload = parseJwt(token)
+  const expiresAt = typeof payload?.exp === 'number' ? payload.exp : undefined
+
+  if (!expiresAt) {
+    return false
+  }
+
+  return expiresAt * 1000 > Date.now() + 30_000
+}
+
 function extractRoles(token: TokenPayload | undefined): string[] {
   if (!token) return []
   const realmRoles = token.realm_access?.roles ?? []
@@ -148,19 +160,6 @@ function buildProfile(token?: string): AuthProfile | undefined {
   }
 }
 
-function isAccessTokenUsable(token?: string): boolean {
-  const payload = parseJwt(token)
-  if (!payload?.sub) {
-    return false
-  }
-
-  if (!payload.exp) {
-    return true
-  }
-
-  const now = Math.floor(Date.now() / 1000)
-  return payload.exp > now + 30
-}
 
 function patchApolloCacheDiff(cache: InMemoryCache) {
   // Apollo Client 3.14 removed support for `canonizeResults`.
@@ -306,6 +305,18 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
   }, [token])
 
   useEffect(() => {
+    setSentryUser(
+      profile
+        ? {
+            id: profile.id,
+            username: profile.username,
+            email: profile.email
+          }
+        : null
+    )
+  }, [profile])
+
+  useEffect(() => {
     if (!apolloClient) {
       return
     }
@@ -395,6 +406,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
           }
         } else {
           console.warn('Refresh token exchange failed', error)
+          captureSentryException(error)
         }
       }
     }

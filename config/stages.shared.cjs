@@ -159,6 +159,11 @@ function resolveStageConfig(stage, environment = process.env) {
     environment.PUSH_REGISTRATION_ENABLED,
     stage !== 'local'
   )
+  const sentryDsn = trim(environment.SENTRY_DSN)
+  const sentryEnabled = resolveBooleanString(
+    environment.SENTRY_ENABLED,
+    stage !== 'local' && Boolean(sentryDsn)
+  )
 
   const keycloak = resolveKeycloak(stage, environment)
 
@@ -175,7 +180,9 @@ function resolveStageConfig(stage, environment = process.env) {
     EAS_PROJECT_ID: easProjectId,
     PRIVACY_URL: privacyUrl,
     SUPPORT_URL: supportUrl,
-    PUSH_REGISTRATION_ENABLED: pushRegistrationEnabled
+    PUSH_REGISTRATION_ENABLED: pushRegistrationEnabled,
+    SENTRY_DSN: sentryDsn ?? '',
+    SENTRY_ENABLED: sentryEnabled
   }
 
   return {
@@ -191,6 +198,11 @@ function resolveStageConfig(stage, environment = process.env) {
     privacyUrl,
     supportUrl,
     pushRegistrationEnabled: pushRegistrationEnabled === 'true',
+    sentry: {
+      dsn: sentryDsn,
+      enabled: sentryEnabled === 'true' && Boolean(sentryDsn),
+      environment: stage
+    },
     keycloak,
     easProjectId,
     extra

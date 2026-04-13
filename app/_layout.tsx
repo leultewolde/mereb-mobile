@@ -1,8 +1,11 @@
-import { Stack } from 'expo-router';
-import { AppProviders } from '../providers/AppProviders';
-import { AuthGate } from '../components/AuthGate';
+import { Stack } from 'expo-router'
+import { AppProviders } from '../providers/AppProviders'
+import { AuthGate } from '../components/AuthGate'
+import { initializeSentry, withSentryRoot } from '../monitoring/sentry'
 
-export default function RootLayout() {
+initializeSentry()
+
+function RootLayout() {
   return (
     <AppProviders>
       <AuthGate>
@@ -51,5 +54,7 @@ export default function RootLayout() {
         </Stack>
       </AuthGate>
     </AppProviders>
-  );
+  )
 }
+
+export default withSentryRoot(RootLayout)

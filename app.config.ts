@@ -19,6 +19,11 @@ const { resolveMobileStage, resolveStageConfig } = require('./config/stages.shar
     apiUrl: string
     privacyUrl: string
     supportUrl: string
+    sentry: {
+      dsn?: string
+      enabled: boolean
+      environment: MobileStage
+    }
     keycloak: {
       url: string
       realm: string
@@ -123,6 +128,7 @@ const config: ExpoConfig = {
         defaultChannel: 'messages'
       }
     ],
+    '@sentry/react-native',
     'expo-router',
     'expo-secure-store',
     [
