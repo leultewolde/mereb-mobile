@@ -128,7 +128,14 @@ const config: ExpoConfig = {
         defaultChannel: 'messages'
       }
     ],
-    '@sentry/react-native',
+    [
+      '@sentry/react-native/expo',
+      {
+        url: 'https://sentry.io/',
+        organization: process.env.SENTRY_ORG,
+        project: process.env.SENTRY_PROJECT
+      }
+    ],
     'expo-router',
     'expo-secure-store',
     [

@@ -162,7 +162,7 @@ function resolveStageConfig(stage, environment = process.env) {
   const sentryDsn = trim(environment.SENTRY_DSN)
   const sentryEnabled = resolveBooleanString(
     environment.SENTRY_ENABLED,
-    stage !== 'local' && Boolean(sentryDsn)
+    stage === 'prd' && Boolean(sentryDsn)
   )
 
   const keycloak = resolveKeycloak(stage, environment)
