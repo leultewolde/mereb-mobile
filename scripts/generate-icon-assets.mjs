@@ -176,8 +176,10 @@ function createAdaptiveIconSvg() {
     size,
     centerX: center,
     centerY: center,
-    ringRadii: [120, 188, 254, 320],
-    tipRadius: 364,
+    // Keep the adaptive foreground inside Android's safe zone so launcher masks
+    // do not clip the outer ring on circles, squircles, or themed icon shapes.
+    ringRadii: [96, 154, 212, 268],
+    tipRadius: 304,
     spokeCount: 8,
     lineColor: BRAND.mark
   })
