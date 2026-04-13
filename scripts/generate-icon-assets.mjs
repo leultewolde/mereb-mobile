@@ -12,8 +12,10 @@ const generatedStoreDir = path.join(appDir, 'store-assets', 'generated')
 const paths = {
   iconSource: path.join(assetsDir, 'icon-source.svg'),
   adaptiveSource: path.join(assetsDir, 'adaptive-icon-source.svg'),
+  notificationSource: path.join(assetsDir, 'notification-icon-source.svg'),
   icon: path.join(assetsDir, 'icon.png'),
   adaptiveIcon: path.join(assetsDir, 'adaptive-icon.png'),
+  notificationIcon: path.join(assetsDir, 'notification-icon.png'),
   favicon: path.join(assetsDir, 'favicon.png'),
   appleStoreIcon: path.join(generatedStoreDir, 'apple', 'app-store-icon-1024.png'),
   googleStoreIcon: path.join(generatedStoreDir, 'google', 'play-icon-512.png')
@@ -195,6 +197,27 @@ function createAdaptiveIconSvg() {
   `.trim()
 }
 
+function createNotificationIconSvg() {
+  const size = 1024
+  const center = size / 2
+  const web = createWebMarkup({
+    size,
+    centerX: center,
+    centerY: center,
+    ringRadii: [136, 236, 322],
+    tipRadius: 388,
+    spokeCount: 6,
+    lineColor: '#ffffff'
+  })
+
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+      ${web}
+      <circle cx="${center}" cy="${center}" r="54" fill="#ffffff" />
+    </svg>
+  `.trim()
+}
+
 async function ensureDir(filePath) {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
 }
@@ -219,9 +242,11 @@ async function rasterizeSvg(sourcePath, outputPath, size) {
 async function main() {
   await writeText(paths.iconSource, createFullIconSvg())
   await writeText(paths.adaptiveSource, createAdaptiveIconSvg())
+  await writeText(paths.notificationSource, createNotificationIconSvg())
 
   await rasterizeSvg(paths.iconSource, paths.icon, 1024)
   await rasterizeSvg(paths.adaptiveSource, paths.adaptiveIcon, 1024)
+  await rasterizeSvg(paths.notificationSource, paths.notificationIcon, 96)
   await rasterizeSvg(paths.iconSource, paths.favicon, 256)
   await rasterizeSvg(paths.iconSource, paths.appleStoreIcon, 1024)
   await rasterizeSvg(paths.iconSource, paths.googleStoreIcon, 512)
@@ -229,6 +254,7 @@ async function main() {
   console.log('Generated mobile icon assets:')
   console.log(`- ${path.relative(appDir, paths.icon)}`)
   console.log(`- ${path.relative(appDir, paths.adaptiveIcon)}`)
+  console.log(`- ${path.relative(appDir, paths.notificationIcon)}`)
   console.log(`- ${path.relative(appDir, paths.favicon)}`)
   console.log(`- ${path.relative(appDir, paths.appleStoreIcon)}`)
   console.log(`- ${path.relative(appDir, paths.googleStoreIcon)}`)

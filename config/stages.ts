@@ -13,6 +13,7 @@ export type StageExtra = {
   EAS_PROJECT_ID: string
   PRIVACY_URL: string
   SUPPORT_URL: string
+  PUSH_REGISTRATION_ENABLED: string
 }
 
 export type StageConfig = {
@@ -27,6 +28,7 @@ export type StageConfig = {
   apiUrl: string
   privacyUrl: string
   supportUrl: string
+  pushRegistrationEnabled: boolean
   keycloak: {
     url: string
     realm: string

@@ -10,12 +10,22 @@ const stage = resolveMobileStage(runtimeExtra.APP_STAGE)
 const stageDefaults = resolveStageConfig(stage)
 
 function trim(value?: string | null): string | undefined {
-  const next = value?.trim()
-  return next ? next : undefined
+  return value?.trim() || undefined
 }
 
 function pick(value: string | undefined, fallback: string): string {
   return trim(value) ?? fallback
+}
+
+function pickBoolean(value: string | undefined, fallback: boolean): boolean {
+  const normalized = trim(value)?.toLowerCase()
+  if (normalized === 'true') {
+    return true
+  }
+  if (normalized === 'false') {
+    return false
+  }
+  return fallback
 }
 
 function extractHost(value?: string | null): string | undefined {
@@ -128,5 +138,8 @@ export const config: Omit<StageConfig, 'extra'> & { pushRegistrationEnabled: boo
     realm: pick(runtimeExtra.KC_REALM, runtimeStageDefaults.keycloak.realm),
     clientId: pick(runtimeExtra.KC_CLIENT_ID, runtimeStageDefaults.keycloak.clientId)
   },
-  pushRegistrationEnabled: false
+  pushRegistrationEnabled: pickBoolean(
+    runtimeExtra.PUSH_REGISTRATION_ENABLED,
+    runtimeStageDefaults.pushRegistrationEnabled
+  )
 }

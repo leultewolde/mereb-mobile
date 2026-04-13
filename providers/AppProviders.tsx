@@ -20,7 +20,10 @@ import {
 } from 'react'
 import { config } from '@mobile/config'
 import { FlagsProvider } from './Flags'
-import { usePushToken } from './Notifications'
+import {
+  NotificationsProvider,
+  type NotificationControlsHandle
+} from './Notifications'
 
 type AdminAccessLevel = 'full' | 'limited' | 'none'
 
@@ -257,16 +260,12 @@ export function useAuth() {
   return useContext(AuthContext)
 }
 
-function NotificationRegistrar() {
-  usePushToken()
-  return null
-}
-
 export function AppProviders({ children }: Readonly<PropsWithChildren>) {
   const [token, setToken] = useState<string>()
   const tokenRef = useRef<string | undefined>(undefined)
   tokenRef.current = token
   const lastAuthTokenRef = useRef<string | undefined>(undefined)
+  const notificationControlsRef = useRef<NotificationControlsHandle | null>(null)
 
   const [profile, setProfile] = useState<AuthProfile>()
   const [apolloClient, setApolloClient] = useState<ApolloClient>()
@@ -460,6 +459,12 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
   }, [performAuth])
 
   const logout = useCallback(async () => {
+    try {
+      await notificationControlsRef.current?.unregisterCurrentDevice()
+    } catch (error) {
+      console.warn('Failed to unregister push device during logout', error)
+    }
+
     await SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY)
     setToken(undefined)
     setProfile(undefined)
@@ -494,8 +499,14 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
     <AuthContext.Provider value={value}>
       <ApolloProvider client={apolloClient}>
         <FlagsProvider token={token}>
-          <NotificationRegistrar />
-          {children}
+          <NotificationsProvider
+            authToken={token}
+            userId={profile?.id}
+            isAuthenticated={isAuthenticated}
+            controlsRef={notificationControlsRef}
+          >
+            {children}
+          </NotificationsProvider>
         </FlagsProvider>
       </ApolloProvider>
     </AuthContext.Provider>

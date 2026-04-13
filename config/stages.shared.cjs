@@ -31,12 +31,19 @@ const STAGE_VARIANTS = {
 }
 
 function trim(value) {
-  const next = value?.trim()
-  return next ? next : undefined
+  return value?.trim() || undefined
 }
 
 function normalizeOrigin(value) {
   return value.replace(/\/+$/, '')
+}
+
+function resolveBooleanString(value, fallback) {
+  const normalized = trim(value)?.toLowerCase()
+  if (normalized === 'true' || normalized === 'false') {
+    return normalized
+  }
+  return fallback ? 'true' : 'false'
 }
 
 function isMobileStage(value) {
@@ -87,50 +94,73 @@ function resolveWebOrigin(stage, environment) {
   return 'https://mereb.app'
 }
 
+function resolveHostedApiUrl(stage) {
+  switch (stage) {
+    case 'dev':
+      return 'https://api-dev.mereb.app'
+    case 'stg':
+      return 'https://api-stg.mereb.app'
+    default:
+      return 'https://api.mereb.app'
+  }
+}
+
+function resolveApiUrl(stage, environment) {
+  if (stage === 'local') {
+    return resolveLocalGatewayOrigin(environment)
+  }
+
+  return resolveHostedApiUrl(stage)
+}
+
+function resolveKeycloak(stage, environment) {
+  if (stage === 'local') {
+    return {
+      url: resolveLocalKeycloakUrl(environment),
+      realm: trim(environment.KC_REALM) ?? 'social',
+      clientId: trim(environment.KC_CLIENT_ID) ?? 'mobile'
+    }
+  }
+
+  switch (stage) {
+    case 'dev':
+      return {
+        url: HOSTED_KEYCLOAK_URL,
+        realm: 'mereb-dev',
+        clientId: 'mobile-dev'
+      }
+    case 'stg':
+      return {
+        url: HOSTED_KEYCLOAK_URL,
+        realm: 'mereb-stg',
+        clientId: 'mobile-stg'
+      }
+    default:
+      return {
+        url: HOSTED_KEYCLOAK_URL,
+        realm: 'mereb',
+        clientId: 'mobile'
+      }
+  }
+}
+
 function resolveStageConfig(stage, environment = process.env) {
   const variant = STAGE_VARIANTS[stage]
   const easProjectId = trim(environment.EAS_PROJECT_ID) ?? EAS_PROJECT_ID
 
-  const apiUrl =
-    stage === 'local'
-      ? resolveLocalGatewayOrigin(environment)
-      : stage === 'dev'
-        ? 'https://api-dev.mereb.app'
-        : stage === 'stg'
-          ? 'https://api-stg.mereb.app'
-          : 'https://api.mereb.app'
-
+  const apiUrl = resolveApiUrl(stage, environment)
   const graphqlUrl = `${apiUrl}/graphql`
   const flagsUrl = `${apiUrl}/flags`
   const inviteRedeemUrl = `${apiUrl}/invite/redeem`
   const webOrigin = resolveWebOrigin(stage, environment)
   const privacyUrl = `${webOrigin}/privacy`
   const supportUrl = `${webOrigin}/support`
+  const pushRegistrationEnabled = resolveBooleanString(
+    environment.PUSH_REGISTRATION_ENABLED,
+    stage !== 'local'
+  )
 
-  const keycloak =
-    stage === 'local'
-      ? {
-          url: resolveLocalKeycloakUrl(environment),
-          realm: trim(environment.KC_REALM) ?? 'social',
-          clientId: trim(environment.KC_CLIENT_ID) ?? 'mobile'
-        }
-      : stage === 'dev'
-        ? {
-            url: HOSTED_KEYCLOAK_URL,
-            realm: 'mereb-dev',
-            clientId: 'mobile-dev'
-          }
-        : stage === 'stg'
-          ? {
-              url: HOSTED_KEYCLOAK_URL,
-              realm: 'mereb-stg',
-              clientId: 'mobile-stg'
-            }
-          : {
-              url: HOSTED_KEYCLOAK_URL,
-              realm: 'mereb',
-              clientId: 'mobile'
-            }
+  const keycloak = resolveKeycloak(stage, environment)
 
   const extra = {
     APP_STAGE: stage,
@@ -144,7 +174,8 @@ function resolveStageConfig(stage, environment = process.env) {
     APP_SCHEME: variant.appScheme,
     EAS_PROJECT_ID: easProjectId,
     PRIVACY_URL: privacyUrl,
-    SUPPORT_URL: supportUrl
+    SUPPORT_URL: supportUrl,
+    PUSH_REGISTRATION_ENABLED: pushRegistrationEnabled
   }
 
   return {
@@ -159,6 +190,7 @@ function resolveStageConfig(stage, environment = process.env) {
     apiUrl,
     privacyUrl,
     supportUrl,
+    pushRegistrationEnabled: pushRegistrationEnabled === 'true',
     keycloak,
     easProjectId,
     extra
