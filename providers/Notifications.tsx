@@ -74,6 +74,7 @@ type GraphPushPlatform = 'IOS' | 'ANDROID'
 
 type MeNotificationSettingsQueryData = {
   meNotificationSettings: {
+    __typename?: 'NotificationSettings'
     directMessagesEnabled: boolean
     updatedAt: string
   }
@@ -81,6 +82,7 @@ type MeNotificationSettingsQueryData = {
 
 type UpdateNotificationSettingsMutationData = {
   updateNotificationSettings: {
+    __typename?: 'NotificationSettings'
     directMessagesEnabled: boolean
     updatedAt: string
   }
@@ -304,6 +306,22 @@ export function NotificationsProvider({
   const directMessagesEnabled =
     settingsQuery.data?.meNotificationSettings.directMessagesEnabled ?? false
 
+  const writeNotificationSettings = useCallback(
+    (enabled: boolean, updatedAt: string) => {
+      settingsQuery.client.writeQuery<MeNotificationSettingsQueryData>({
+        query: ME_NOTIFICATION_SETTINGS_QUERY,
+        data: {
+          meNotificationSettings: {
+            __typename: 'NotificationSettings',
+            directMessagesEnabled: enabled,
+            updatedAt
+          }
+        }
+      })
+    },
+    [settingsQuery.client]
+  )
+
   const refreshPermissionStatus = useCallback(async () => {
     if (!isAvailable) {
       setOsStatus('unknown')
@@ -468,13 +486,40 @@ export function NotificationsProvider({
       setSettingsSaving(true)
 
       try {
-        await updateNotificationSettings({
+        const optimisticUpdatedAt = new Date().toISOString()
+        const result = await updateNotificationSettings({
           variables: {
             directMessagesEnabled: enabled
+          },
+          optimisticResponse: {
+            updateNotificationSettings: {
+              __typename: 'NotificationSettings',
+              directMessagesEnabled: enabled,
+              updatedAt: optimisticUpdatedAt
+            }
+          },
+          update: (_cache, mutationResult) => {
+            const updatedSettings = mutationResult.data?.updateNotificationSettings
+            if (!updatedSettings) {
+              return
+            }
+
+            writeNotificationSettings(
+              updatedSettings.directMessagesEnabled,
+              updatedSettings.updatedAt
+            )
           }
         })
 
-        await settingsQuery.refetch()
+        const updatedSettings = result.data?.updateNotificationSettings
+        if (updatedSettings) {
+          writeNotificationSettings(
+            updatedSettings.directMessagesEnabled,
+            updatedSettings.updatedAt
+          )
+        } else {
+          writeNotificationSettings(enabled, optimisticUpdatedAt)
+        }
 
         if (!enabled) {
           await unregisterCurrentDevice()
@@ -486,10 +531,10 @@ export function NotificationsProvider({
     [
       osStatus,
       requestPermission,
-      settingsQuery,
       shouldLoadSettings,
       unregisterCurrentDevice,
-      updateNotificationSettings
+      updateNotificationSettings,
+      writeNotificationSettings
     ]
   )
 
