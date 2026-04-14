@@ -46,6 +46,16 @@ function resolveBooleanString(value, fallback) {
   return fallback ? 'true' : 'false'
 }
 
+function resolveNumber(value, fallback) {
+  const normalized = trim(value)
+  if (!normalized) {
+    return fallback
+  }
+
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 function isMobileStage(value) {
   return value === 'local' || value === 'dev' || value === 'stg' || value === 'prd'
 }
@@ -168,6 +178,14 @@ function resolveStageConfig(stage, environment = process.env) {
     environment.SENTRY_STARTUP_TEST_EVENT,
     false
   )
+  const sentryReplaysSessionSampleRate = resolveNumber(
+    environment.SENTRY_REPLAYS_SESSION_SAMPLE_RATE,
+    0.1
+  )
+  const sentryReplaysOnErrorSampleRate = resolveNumber(
+    environment.SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE,
+      1
+  )
 
   const keycloak = resolveKeycloak(stage, environment)
 
@@ -187,7 +205,9 @@ function resolveStageConfig(stage, environment = process.env) {
     PUSH_REGISTRATION_ENABLED: pushRegistrationEnabled,
     SENTRY_DSN: sentryDsn ?? '',
     SENTRY_ENABLED: sentryEnabled,
-    SENTRY_STARTUP_TEST_EVENT: sentryStartupTestEvent
+    SENTRY_STARTUP_TEST_EVENT: sentryStartupTestEvent,
+    SENTRY_REPLAYS_SESSION_SAMPLE_RATE: String(sentryReplaysSessionSampleRate),
+    SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: String(sentryReplaysOnErrorSampleRate)
   }
 
   return {
@@ -207,7 +227,9 @@ function resolveStageConfig(stage, environment = process.env) {
       dsn: sentryDsn,
       enabled: sentryEnabled === 'true' && Boolean(sentryDsn),
       environment: stage,
-      startupTestEvent: sentryStartupTestEvent === 'true'
+      startupTestEvent: sentryStartupTestEvent === 'true',
+      replaysSessionSampleRate: sentryReplaysSessionSampleRate,
+      replaysOnErrorSampleRate: sentryReplaysOnErrorSampleRate
     },
     keycloak,
     easProjectId,

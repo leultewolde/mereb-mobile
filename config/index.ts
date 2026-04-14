@@ -28,6 +28,16 @@ function pickBoolean(value: string | undefined, fallback: boolean): boolean {
   return fallback
 }
 
+function pickNumber(value: string | undefined, fallback: number): number {
+  const normalized = trim(value)
+  if (!normalized) {
+    return fallback
+  }
+
+  const parsed = Number(normalized)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
 function extractHost(value?: string | null): string | undefined {
   const next = trim(value)
   if (!next) {
@@ -142,6 +152,14 @@ export const config: Omit<StageConfig, 'extra'> & { pushRegistrationEnabled: boo
     startupTestEvent: pickBoolean(
       runtimeExtra.SENTRY_STARTUP_TEST_EVENT,
       runtimeStageDefaults.sentry.startupTestEvent
+    ),
+    replaysSessionSampleRate: pickNumber(
+      runtimeExtra.SENTRY_REPLAYS_SESSION_SAMPLE_RATE,
+      runtimeStageDefaults.sentry.replaysSessionSampleRate
+    ),
+    replaysOnErrorSampleRate: pickNumber(
+      runtimeExtra.SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE,
+      runtimeStageDefaults.sentry.replaysOnErrorSampleRate
     )
   },
   keycloak: {
