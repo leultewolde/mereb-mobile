@@ -1,4 +1,5 @@
 import Constants from 'expo-constants'
+import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Sentry from '@sentry/react-native'
 import type { ComponentType } from 'react'
 import { config } from '@mobile/config'
@@ -11,6 +12,51 @@ type SentryUser = {
 
 const sentryDsn = config.sentry.dsn?.trim()
 const sentryEnabled = config.sentry.enabled && Boolean(sentryDsn)
+const sentryStartupTestEvent = config.sentry.startupTestEvent
+
+function buildProbeStorageKey(): string | undefined {
+  const release = buildRelease()
+  if (!release) {
+    return undefined
+  }
+
+  return `sentry-startup-probe:${config.sentry.environment}:${release}`
+}
+
+async function sendStartupProbeOnce(): Promise<void> {
+  if (!sentryEnabled || !sentryStartupTestEvent) {
+    return
+  }
+
+  const storageKey = buildProbeStorageKey()
+  if (!storageKey) {
+    return
+  }
+
+  try {
+    const alreadySent = await AsyncStorage.getItem(storageKey)
+    if (alreadySent === 'true') {
+      return
+    }
+
+    const release = buildRelease()
+
+    Sentry.withScope((scope) => {
+      scope.setTag('probe', 'startup')
+      scope.setTag('stage', config.sentry.environment)
+      if (release) {
+        scope.setExtra('release', release)
+      }
+
+      Sentry.captureException(new Error('Sentry startup probe'))
+    })
+
+    await Sentry.flush()
+    await AsyncStorage.setItem(storageKey, 'true')
+  } catch {
+    // Avoid breaking app startup if probe delivery bookkeeping fails.
+  }
+}
 
 let sentryInitialized = false
 
@@ -40,6 +86,7 @@ export function initializeSentry(): void {
   })
 
   sentryInitialized = true
+  void sendStartupProbeOnce()
 }
 
 export function setSentryUser(user: SentryUser | null): void {

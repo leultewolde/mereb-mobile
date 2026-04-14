@@ -164,6 +164,10 @@ function resolveStageConfig(stage, environment = process.env) {
     environment.SENTRY_ENABLED,
     stage === 'prd' && Boolean(sentryDsn)
   )
+  const sentryStartupTestEvent = resolveBooleanString(
+    environment.SENTRY_STARTUP_TEST_EVENT,
+    false
+  )
 
   const keycloak = resolveKeycloak(stage, environment)
 
@@ -182,7 +186,8 @@ function resolveStageConfig(stage, environment = process.env) {
     SUPPORT_URL: supportUrl,
     PUSH_REGISTRATION_ENABLED: pushRegistrationEnabled,
     SENTRY_DSN: sentryDsn ?? '',
-    SENTRY_ENABLED: sentryEnabled
+    SENTRY_ENABLED: sentryEnabled,
+    SENTRY_STARTUP_TEST_EVENT: sentryStartupTestEvent
   }
 
   return {
@@ -201,7 +206,8 @@ function resolveStageConfig(stage, environment = process.env) {
     sentry: {
       dsn: sentryDsn,
       enabled: sentryEnabled === 'true' && Boolean(sentryDsn),
-      environment: stage
+      environment: stage,
+      startupTestEvent: sentryStartupTestEvent === 'true'
     },
     keycloak,
     easProjectId,

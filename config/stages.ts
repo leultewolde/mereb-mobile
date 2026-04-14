@@ -16,6 +16,7 @@ export type StageExtra = {
   PUSH_REGISTRATION_ENABLED: string
   SENTRY_DSN: string
   SENTRY_ENABLED: string
+  SENTRY_STARTUP_TEST_EVENT: string
 }
 
 export type StageConfig = {
@@ -35,6 +36,7 @@ export type StageConfig = {
     dsn?: string
     enabled: boolean
     environment: MobileStage
+    startupTestEvent: boolean
   }
   keycloak: {
     url: string

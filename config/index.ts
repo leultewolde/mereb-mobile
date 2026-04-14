@@ -138,7 +138,11 @@ export const config: Omit<StageConfig, 'extra'> & { pushRegistrationEnabled: boo
     enabled:
       pickBoolean(runtimeExtra.SENTRY_ENABLED, runtimeStageDefaults.sentry.enabled) &&
       Boolean(trim(runtimeExtra.SENTRY_DSN) ?? runtimeStageDefaults.sentry.dsn),
-    environment: runtimeStageDefaults.sentry.environment
+    environment: runtimeStageDefaults.sentry.environment,
+    startupTestEvent: pickBoolean(
+      runtimeExtra.SENTRY_STARTUP_TEST_EVENT,
+      runtimeStageDefaults.sentry.startupTestEvent
+    )
   },
   keycloak: {
     url: pick(runtimeExtraKeycloakUrl, runtimeStageDefaults.keycloak.url),
