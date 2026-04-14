@@ -8,7 +8,8 @@
       "distribution": "internal",
       "channel": "local",
       "env": {
-        "APP_STAGE": "local"
+        "APP_STAGE": "local",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "dev": {
@@ -16,7 +17,8 @@
       "distribution": "internal",
       "channel": "dev",
       "env": {
-        "APP_STAGE": "dev"
+        "APP_STAGE": "dev",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "stg": {
@@ -24,7 +26,8 @@
       "distribution": "internal",
       "channel": "stg",
       "env": {
-        "APP_STAGE": "stg"
+        "APP_STAGE": "stg",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     },
     "prd": {
@@ -33,7 +36,8 @@
       "channel": "prd",
       "autoIncrement": true,
       "env": {
-        "APP_STAGE": "prd"
+        "APP_STAGE": "prd",
+        "SENTRY_DISABLE_AUTO_UPLOAD": "true"
       }
     }
   },
