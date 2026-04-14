@@ -76,13 +76,27 @@ export function initializeSentry(): void {
     return
   }
 
+  const integrations =
+    typeof Sentry.mobileReplayIntegration === 'function'
+      ? [
+          Sentry.mobileReplayIntegration({
+            maskAllText: true,
+            maskAllImages: true,
+            maskAllVectors: true
+          })
+        ]
+      : undefined
+
   Sentry.init({
     dsn: sentryDsn,
     enabled: true,
     environment: config.sentry.environment,
     release: buildRelease(),
     attachStacktrace: true,
-    sendDefaultPii: false
+    sendDefaultPii: false,
+    replaysSessionSampleRate: config.sentry.replaysSessionSampleRate,
+    replaysOnErrorSampleRate: config.sentry.replaysOnErrorSampleRate,
+    ...(integrations ? { integrations } : {})
   })
 
   sentryInitialized = true

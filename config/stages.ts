@@ -17,6 +17,8 @@ export type StageExtra = {
   SENTRY_DSN: string
   SENTRY_ENABLED: string
   SENTRY_STARTUP_TEST_EVENT: string
+  SENTRY_REPLAYS_SESSION_SAMPLE_RATE: string
+  SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: string
 }
 
 export type StageConfig = {
@@ -37,6 +39,8 @@ export type StageConfig = {
     enabled: boolean
     environment: MobileStage
     startupTestEvent: boolean
+    replaysSessionSampleRate: number
+    replaysOnErrorSampleRate: number
   }
   keycloak: {
     url: string
