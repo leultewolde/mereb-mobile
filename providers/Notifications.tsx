@@ -24,8 +24,13 @@ import {
   useRef,
   useState
 } from 'react'
+import {
+  addSentryBreadcrumb,
+  captureSentryException
+} from '../monitoring/sentry'
 
 const INSTALLATION_ID_STORAGE_KEY = 'notifications.installationId'
+const DIRECT_MESSAGES_CACHE_STORAGE_KEY = 'notifications.directMessagesEnabled'
 const MESSAGE_CHANNEL_ID = 'messages'
 
 const ME_NOTIFICATION_SETTINGS_QUERY = gql`
@@ -223,6 +228,27 @@ async function ensureInstallationId(): Promise<string> {
   return installationId
 }
 
+async function readCachedDirectMessagesEnabled(): Promise<boolean | undefined> {
+  const storedValue = await AsyncStorage.getItem(DIRECT_MESSAGES_CACHE_STORAGE_KEY)
+
+  if (storedValue === 'true') {
+    return true
+  }
+
+  if (storedValue === 'false') {
+    return false
+  }
+
+  return undefined
+}
+
+async function writeCachedDirectMessagesEnabled(enabled: boolean): Promise<void> {
+  await AsyncStorage.setItem(
+    DIRECT_MESSAGES_CACHE_STORAGE_KEY,
+    enabled ? 'true' : 'false'
+  )
+}
+
 async function ensureAndroidMessagesChannel(): Promise<void> {
   if (Platform.OS !== 'android') {
     return
@@ -275,19 +301,23 @@ export function NotificationsProvider({
   const [permissionReady, setPermissionReady] = useState(false)
   const [settingsSaving, setSettingsSaving] = useState(false)
   const [registrationSaving, setRegistrationSaving] = useState(false)
+  const [cachedDirectMessagesEnabled, setCachedDirectMessagesEnabled] = useState<
+    boolean | undefined
+  >(undefined)
   const registeredStateRef = useRef<{
     userId: string
     installationId: string
     expoPushToken: string
   } | null>(null)
   const handledNotificationRef = useRef<Set<string>>(new Set())
+  const lastSettingsErrorRef = useRef<string | undefined>(undefined)
 
   const settingsQuery = useQuery<MeNotificationSettingsQueryData>(
     ME_NOTIFICATION_SETTINGS_QUERY,
     {
-    skip: !shouldLoadSettings,
-    fetchPolicy: 'cache-and-network',
-    notifyOnNetworkStatusChange: true
+      skip: !shouldLoadSettings,
+      fetchPolicy: 'cache-and-network',
+      notifyOnNetworkStatusChange: true
     }
   )
   const [updateNotificationSettings] = useMutation<
@@ -304,10 +334,28 @@ export function NotificationsProvider({
   >(REMOVE_PUSH_DEVICE_MUTATION)
 
   const directMessagesEnabled =
-    settingsQuery.data?.meNotificationSettings.directMessagesEnabled ?? false
+    settingsQuery.data?.meNotificationSettings.directMessagesEnabled ??
+    cachedDirectMessagesEnabled ??
+    false
+
+  const persistDirectMessagesEnabled = useCallback(async (enabled: boolean) => {
+    setCachedDirectMessagesEnabled(enabled)
+
+    try {
+      await writeCachedDirectMessagesEnabled(enabled)
+    } catch (error) {
+      captureSentryException(error)
+      addSentryBreadcrumb({
+        category: 'notifications',
+        message: 'Failed to persist cached notification preference',
+        level: 'error'
+      })
+    }
+  }, [])
 
   const writeNotificationSettings = useCallback(
     (enabled: boolean, updatedAt: string) => {
+      void persistDirectMessagesEnabled(enabled)
       settingsQuery.client.writeQuery<MeNotificationSettingsQueryData>({
         query: ME_NOTIFICATION_SETTINGS_QUERY,
         data: {
@@ -319,7 +367,7 @@ export function NotificationsProvider({
         }
       })
     },
-    [settingsQuery.client]
+    [persistDirectMessagesEnabled, settingsQuery.client]
   )
 
   const refreshPermissionStatus = useCallback(async () => {
@@ -331,11 +379,16 @@ export function NotificationsProvider({
 
     try {
       const permissions = await Notifications.getPermissionsAsync()
-      setOsStatus(mapPermissionStatus(permissions))
+      const nextStatus = mapPermissionStatus(permissions)
+      setOsStatus(nextStatus)
+      addSentryBreadcrumb({
+        category: 'notifications',
+        message: 'Read notification permission status',
+        data: { status: nextStatus }
+      })
     } catch (error) {
-      if (__DEV__) {
-        console.warn('Failed to read notification permissions', error)
-      }
+      console.warn('Failed to read notification permissions', error)
+      captureSentryException(error)
       setOsStatus('unknown')
     } finally {
       setPermissionReady(true)
@@ -355,6 +408,11 @@ export function NotificationsProvider({
       }
 
       handledNotificationRef.current.add(responseKey)
+      addSentryBreadcrumb({
+        category: 'notifications',
+        message: 'Opened conversation from notification',
+        data: { conversationId }
+      })
       router.push(`/messages/${encodeURIComponent(conversationId)}`)
     },
     [router]
@@ -377,6 +435,16 @@ export function NotificationsProvider({
 
       try {
         await ensureAndroidMessagesChannel()
+
+        addSentryBreadcrumb({
+          category: 'notifications',
+          message: 'Registering push device',
+          data: {
+            installationId,
+            userId,
+            platform: Platform.OS
+          }
+        })
 
         const expoPushToken =
           providedToken ??
@@ -405,9 +473,14 @@ export function NotificationsProvider({
           expoPushToken
         }
       } catch (error) {
-        if (__DEV__) {
-          console.warn('Failed to upsert push device', error)
-        }
+        console.warn('Failed to upsert push device', error)
+        captureSentryException(error)
+        addSentryBreadcrumb({
+          category: 'notifications',
+          message: 'Push device registration failed',
+          data: { installationId, userId },
+          level: 'error'
+        })
       } finally {
         setRegistrationSaving(false)
       }
@@ -442,10 +515,14 @@ export function NotificationsProvider({
         variables: { installationId }
       })
       registeredStateRef.current = null
+      addSentryBreadcrumb({
+        category: 'notifications',
+        message: 'Push device unregistered',
+        data: { installationId, userId }
+      })
     } catch (error) {
-      if (__DEV__) {
-        console.warn('Failed to remove push device', error)
-      }
+      console.warn('Failed to remove push device', error)
+      captureSentryException(error)
     }
   }, [authToken, installationId, removePushDevice, userId])
 
@@ -458,11 +535,15 @@ export function NotificationsProvider({
       const permissions = await Notifications.requestPermissionsAsync()
       const nextStatus = mapPermissionStatus(permissions)
       setOsStatus(nextStatus)
+      addSentryBreadcrumb({
+        category: 'notifications',
+        message: 'Requested notification permissions',
+        data: { status: nextStatus }
+      })
       return nextStatus
     } catch (error) {
-      if (__DEV__) {
-        console.warn('Failed to request notification permissions', error)
-      }
+      console.warn('Failed to request notification permissions', error)
+      captureSentryException(error)
       return 'unknown'
     } finally {
       setPermissionReady(true)
@@ -486,7 +567,14 @@ export function NotificationsProvider({
       setSettingsSaving(true)
 
       try {
+        addSentryBreadcrumb({
+          category: 'notifications',
+          message: 'Updating direct-message notification setting',
+          data: { enabled }
+        })
         const optimisticUpdatedAt = new Date().toISOString()
+        await persistDirectMessagesEnabled(enabled)
+        writeNotificationSettings(enabled, optimisticUpdatedAt)
         const result = await updateNotificationSettings({
           variables: {
             directMessagesEnabled: enabled
@@ -524,12 +612,22 @@ export function NotificationsProvider({
         if (!enabled) {
           await unregisterCurrentDevice()
         }
+      } catch (error) {
+        captureSentryException(error)
+        addSentryBreadcrumb({
+          category: 'notifications',
+          message: 'Failed to update direct-message notification setting',
+          data: { enabled },
+          level: 'error'
+        })
+        throw error
       } finally {
         setSettingsSaving(false)
       }
     },
     [
       osStatus,
+      persistDirectMessagesEnabled,
       requestPermission,
       shouldLoadSettings,
       unregisterCurrentDevice,
@@ -547,14 +645,17 @@ export function NotificationsProvider({
 
     const bootstrap = async () => {
       try {
-        const stableInstallationId = await ensureInstallationId()
+        const [stableInstallationId, cachedPreference] = await Promise.all([
+          ensureInstallationId(),
+          readCachedDirectMessagesEnabled()
+        ])
         if (!cancelled) {
           setInstallationId(stableInstallationId)
+          setCachedDirectMessagesEnabled(cachedPreference)
         }
       } catch (error) {
-        if (__DEV__) {
-          console.warn('Failed to load notification installation ID', error)
-        }
+        console.warn('Failed to load notification installation state', error)
+        captureSentryException(error)
       } finally {
         if (!cancelled) {
           setInstallationReady(true)
@@ -569,6 +670,35 @@ export function NotificationsProvider({
       cancelled = true
     }
   }, [refreshPermissionStatus])
+
+  useEffect(() => {
+    const nextValue = settingsQuery.data?.meNotificationSettings.directMessagesEnabled
+    if (typeof nextValue !== 'boolean') {
+      return
+    }
+
+    void persistDirectMessagesEnabled(nextValue)
+  }, [persistDirectMessagesEnabled, settingsQuery.data?.meNotificationSettings.directMessagesEnabled])
+
+  useEffect(() => {
+    if (!shouldLoadSettings || !settingsQuery.error) {
+      lastSettingsErrorRef.current = undefined
+      return
+    }
+
+    const errorKey = settingsQuery.error.message
+    if (lastSettingsErrorRef.current === errorKey) {
+      return
+    }
+
+    lastSettingsErrorRef.current = errorKey
+    captureSentryException(settingsQuery.error)
+    addSentryBreadcrumb({
+      category: 'notifications',
+      message: 'Failed to load notification settings',
+      level: 'error'
+    })
+  }, [settingsQuery.error, shouldLoadSettings])
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {

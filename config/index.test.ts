@@ -97,4 +97,28 @@ describe('runtime config', () => {
     expect(config.supportUrl).toBe('http://10.0.2.2:5173/support')
     expect(config.keycloak.url).toBe('http://10.0.2.2:8081')
   })
+
+  it('hydrates production Sentry runtime values from Expo extras', async () => {
+    const config = await loadConfig({
+      expoConfig: {
+        extra: {
+          APP_STAGE: 'prd',
+          SENTRY_DSN: 'https://examplePublicKey@o0.ingest.sentry.io/1',
+          SENTRY_ENABLED: 'true',
+          SENTRY_STARTUP_TEST_EVENT: 'true',
+          SENTRY_REPLAYS_SESSION_SAMPLE_RATE: '1',
+          SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: '0.75'
+        }
+      }
+    })
+
+    expect(config.sentry).toMatchObject({
+      dsn: 'https://examplePublicKey@o0.ingest.sentry.io/1',
+      enabled: true,
+      environment: 'prd',
+      startupTestEvent: true,
+      replaysSessionSampleRate: 1,
+      replaysOnErrorSampleRate: 0.75
+    })
+  })
 })

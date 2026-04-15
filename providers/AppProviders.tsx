@@ -8,6 +8,7 @@ import { AsyncStorageWrapper, persistCache } from 'apollo3-cache-persist'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as AuthSession from 'expo-auth-session'
 import * as SecureStore from 'expo-secure-store'
+import { AppState } from 'react-native'
 import {
   type PropsWithChildren,
   createContext,
@@ -19,7 +20,11 @@ import {
   useState
 } from 'react'
 import { config } from '@mobile/config'
-import { captureSentryException, setSentryUser } from '../monitoring/sentry'
+import {
+  addSentryBreadcrumb,
+  captureSentryException,
+  setSentryUser
+} from '../monitoring/sentry'
 import { FlagsProvider } from './Flags'
 import {
   NotificationsProvider,
@@ -65,6 +70,8 @@ const FULL_ADMIN_ROLES = new Set(['admin', 'mereb.admin', 'realm-admin'])
 const LIMITED_ADMIN_ROLES = new Set(['moderator', 'support', 'admin.viewer', 'mereb.staff'])
 const ACCESS_TOKEN_STORAGE_KEY = 'access_token'
 const REFRESH_TOKEN_STORAGE_KEY = 'refresh_token'
+const ACCESS_TOKEN_EXPIRY_BUFFER_MS = 2 * 60 * 1000
+const ACCESS_TOKEN_REFRESH_FLOOR_MS = 5 * 1000
 
 type TokenExchangePayload = {
   access_token?: string
@@ -131,6 +138,23 @@ function isAccessTokenUsable(token?: string): boolean {
   }
 
   return expiresAt * 1000 > Date.now() + 30_000
+}
+
+function getAccessTokenExpiryMs(token?: string): number | undefined {
+  const payload = parseJwt(token)
+  return typeof payload?.exp === 'number' ? payload.exp * 1000 : undefined
+}
+
+function isAccessTokenExpiringSoon(
+  token?: string,
+  bufferMs: number = ACCESS_TOKEN_EXPIRY_BUFFER_MS
+): boolean {
+  const expiresAt = getAccessTokenExpiryMs(token)
+  if (!expiresAt) {
+    return true
+  }
+
+  return expiresAt <= Date.now() + bufferMs
 }
 
 function extractRoles(token: TokenPayload | undefined): string[] {
@@ -234,6 +258,44 @@ function isInvalidGrantError(error: unknown): boolean {
   )
 }
 
+function isAuthenticationErrorMessage(message?: string): boolean {
+  const normalized = message?.trim().toLowerCase()
+  if (!normalized) {
+    return false
+  }
+
+  return (
+    normalized.includes('authentication required') ||
+    normalized.includes('authorization required') ||
+    normalized.includes('invalid token') ||
+    normalized.includes('jwt') ||
+    normalized.includes('token expired')
+  )
+}
+
+async function responseHasAuthenticationFailure(response: Response): Promise<boolean> {
+  if (response.status === 401 || response.status === 403) {
+    return true
+  }
+
+  const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
+  if (!contentType.includes('json')) {
+    return false
+  }
+
+  try {
+    const payload = (await response.clone().json()) as {
+      errors?: { message?: string }[]
+    }
+
+    return (payload.errors ?? []).some((error) =>
+      isAuthenticationErrorMessage(error.message)
+    )
+  } catch {
+    return false
+  }
+}
+
 async function exchangeTokens(
   discovery: AuthSession.DiscoveryDocument,
   parameters: Record<string, string>,
@@ -281,6 +343,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
   tokenRef.current = token
   const lastAuthTokenRef = useRef<string | undefined>(undefined)
   const notificationControlsRef = useRef<NotificationControlsHandle | null>(null)
+  const refreshPromiseRef = useRef<Promise<string | undefined> | null>(null)
 
   const [profile, setProfile] = useState<AuthProfile>()
   const [apolloClient, setApolloClient] = useState<ApolloClient>()
@@ -299,6 +362,188 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
     return keys
   }, [])
   const isAuthConfigured = missingConfigKeys.length === 0
+
+  const setCurrentToken = useCallback((nextToken?: string) => {
+    tokenRef.current = nextToken
+    setToken(nextToken)
+  }, [])
+
+  const clearStoredSession = useCallback(async () => {
+    await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY)
+    await SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY)
+    setCurrentToken(undefined)
+    setProfile(undefined)
+  }, [setCurrentToken])
+
+  const refreshSessionNow = useCallback(
+    async (reason: string, force = false): Promise<string | undefined> => {
+      const currentToken = tokenRef.current
+
+      if (!isAuthConfigured) {
+        return currentToken
+      }
+
+      if (
+        !force &&
+        currentToken &&
+        isAccessTokenUsable(currentToken) &&
+        !isAccessTokenExpiringSoon(currentToken)
+      ) {
+        return currentToken
+      }
+
+      const storedRefresh = await SecureStore.getItemAsync(REFRESH_TOKEN_STORAGE_KEY)
+      if (!storedRefresh) {
+        if (!isAccessTokenUsable(currentToken)) {
+          setCurrentToken(undefined)
+        }
+        return currentToken && isAccessTokenUsable(currentToken) ? currentToken : undefined
+      }
+
+      addSentryBreadcrumb({
+        category: 'auth',
+        message: 'Refreshing session',
+        data: { reason }
+      })
+
+      try {
+        const discovery = await AuthSession.fetchDiscoveryAsync(buildIssuerUrl())
+        const payload = await exchangeTokens(
+          discovery,
+          {
+            grant_type: 'refresh_token',
+            client_id: config.keycloak.clientId,
+            refresh_token: storedRefresh
+          },
+          'Refresh token exchange'
+        )
+
+        if (payload.access_token) {
+          await SecureStore.setItemAsync(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
+          setCurrentToken(payload.access_token)
+        } else {
+          await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY)
+          setCurrentToken(undefined)
+        }
+
+        if (payload.refresh_token) {
+          await SecureStore.setItemAsync(REFRESH_TOKEN_STORAGE_KEY, payload.refresh_token)
+        }
+
+        addSentryBreadcrumb({
+          category: 'auth',
+          message: 'Session refreshed',
+          data: { reason }
+        })
+
+        return payload.access_token
+      } catch (error) {
+        if (isInvalidGrantError(error)) {
+          addSentryBreadcrumb({
+            category: 'auth',
+            message: 'Refresh token rejected',
+            data: { reason },
+            level: 'warning'
+          })
+          captureSentryException(error)
+          await clearStoredSession()
+          return undefined
+        }
+
+        console.warn('Refresh token exchange failed', error)
+        addSentryBreadcrumb({
+          category: 'auth',
+          message: 'Session refresh failed',
+          data: {
+            reason,
+            message: error instanceof Error ? error.message : String(error)
+          },
+          level: 'error'
+        })
+        captureSentryException(error)
+
+        if (currentToken && isAccessTokenUsable(currentToken)) {
+          return currentToken
+        }
+
+        return undefined
+      }
+    },
+    [clearStoredSession, isAuthConfigured, setCurrentToken]
+  )
+
+  const refreshSession = useCallback(
+    (reason: string, force = false): Promise<string | undefined> => {
+      if (refreshPromiseRef.current) {
+        return refreshPromiseRef.current
+      }
+
+      const promise = refreshSessionNow(reason, force).finally(() => {
+        if (refreshPromiseRef.current === promise) {
+          refreshPromiseRef.current = null
+        }
+      })
+
+      refreshPromiseRef.current = promise
+      return promise
+    },
+    [refreshSessionNow]
+  )
+
+  const resolveRequestToken = useCallback(async (): Promise<string | undefined> => {
+    const currentToken = tokenRef.current
+
+    if (
+      currentToken &&
+      isAccessTokenUsable(currentToken) &&
+      !isAccessTokenExpiringSoon(currentToken)
+    ) {
+      return currentToken
+    }
+
+    return refreshSession('graphql-preflight', true)
+  }, [refreshSession])
+
+  const graphqlFetch = useCallback(
+    async (uri: RequestInfo | URL, options: RequestInit = {}) => {
+      const requestToken = await resolveRequestToken()
+      const initialHeaders = {
+        ...options.headers,
+        ...(requestToken ? { Authorization: `Bearer ${requestToken}` } : {})
+      }
+
+      const response = await fetch(uri, {
+        ...options,
+        headers: initialHeaders
+      })
+
+      const shouldRetry =
+        Boolean(requestToken) && (await responseHasAuthenticationFailure(response))
+
+      if (!shouldRetry) {
+        return response
+      }
+
+      const refreshedToken = await refreshSession('graphql-auth-retry', true)
+      if (!refreshedToken || refreshedToken === requestToken) {
+        return response
+      }
+
+      addSentryBreadcrumb({
+        category: 'auth',
+        message: 'Retrying GraphQL request with refreshed token'
+      })
+
+      return fetch(uri, {
+        ...options,
+        headers: {
+          ...options.headers,
+          Authorization: `Bearer ${refreshedToken}`
+        }
+      })
+    },
+    [refreshSession, resolveRequestToken]
+  )
 
   useEffect(() => {
     setProfile(buildProfile(token))
@@ -349,65 +594,24 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       return new ApolloClient({
         link: new HttpLink({
           uri: config.graphqlUrl,
-          fetch: (uri, options = {}) => {
-            const headers = {
-              ...options.headers,
-              ...(tokenRef.current ? { Authorization: `Bearer ${tokenRef.current}` } : {})
-            }
-            return fetch(uri, { ...options, headers })
-          }
+          fetch: graphqlFetch
         }),
         cache
       })
     }
 
-    const hydrateRefreshToken = async () => {
+    const hydrateSession = async () => {
       const storedAccess = await SecureStore.getItemAsync(ACCESS_TOKEN_STORAGE_KEY)
-      const storedRefresh = await SecureStore.getItemAsync(REFRESH_TOKEN_STORAGE_KEY)
-
-      if (storedAccess && isAccessTokenUsable(storedAccess) && !cancelled) {
-        setToken(storedAccess)
-      }
-
-      if (!storedRefresh || !isAuthConfigured || cancelled) {
+      if (cancelled) {
         return
       }
 
-      try {
-        const discovery = await AuthSession.fetchDiscoveryAsync(buildIssuerUrl())
-        const payload = await exchangeTokens(
-          discovery,
-          {
-            grant_type: 'refresh_token',
-            client_id: config.keycloak.clientId,
-            refresh_token: storedRefresh
-          },
-          'Refresh token exchange'
-        )
+      if (storedAccess && isAccessTokenUsable(storedAccess)) {
+        setCurrentToken(storedAccess)
+      }
 
-        if (cancelled) {
-          return
-        }
-
-        if (payload.access_token) {
-          await SecureStore.setItemAsync(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
-          setToken(payload.access_token)
-        }
-
-        if (payload.refresh_token) {
-          await SecureStore.setItemAsync(REFRESH_TOKEN_STORAGE_KEY, payload.refresh_token)
-        }
-      } catch (error) {
-        if (isInvalidGrantError(error)) {
-          await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY)
-          await SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY)
-          if (!cancelled) {
-            setToken(undefined)
-          }
-        } else {
-          console.warn('Refresh token exchange failed', error)
-          captureSentryException(error)
-        }
+      if (!storedAccess || isAccessTokenExpiringSoon(storedAccess)) {
+        await refreshSession('bootstrap', true)
       }
     }
 
@@ -419,7 +623,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         }
 
         setApolloClient(client)
-        await hydrateRefreshToken()
+        await hydrateSession()
       } catch (error) {
         console.error('Failed to initialise Apollo client', error)
       } finally {
@@ -434,7 +638,48 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
     return () => {
       cancelled = true
     }
-  }, [isAuthConfigured])
+  }, [graphqlFetch, refreshSession, setCurrentToken])
+
+  useEffect(() => {
+    if (!token) {
+      return
+    }
+
+    const expiresAt = getAccessTokenExpiryMs(token)
+    if (!expiresAt) {
+      return
+    }
+
+    const delay = Math.max(
+      expiresAt - Date.now() - ACCESS_TOKEN_EXPIRY_BUFFER_MS,
+      ACCESS_TOKEN_REFRESH_FLOOR_MS
+    )
+
+    const timeout = setTimeout(() => {
+      void refreshSession('scheduled', true)
+    }, delay)
+
+    return () => {
+      clearTimeout(timeout)
+    }
+  }, [refreshSession, token])
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') {
+        return
+      }
+
+      const currentToken = tokenRef.current
+      if (!currentToken || isAccessTokenExpiringSoon(currentToken)) {
+        void refreshSession('foreground', true)
+      }
+    })
+
+    return () => {
+      subscription.remove()
+    }
+  }, [refreshSession])
 
   const performAuth = useCallback(
     async (extraParams?: Record<string, string>) => {
@@ -475,9 +720,10 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
 
         if (payload.access_token) {
           await SecureStore.setItemAsync(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
-          setToken(payload.access_token)
+          setCurrentToken(payload.access_token)
         } else {
           await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY)
+          setCurrentToken(undefined)
         }
 
         if (payload.refresh_token) {
@@ -485,11 +731,17 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         } else {
           await SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY)
         }
+
+        addSentryBreadcrumb({
+          category: 'auth',
+          message: 'Interactive login completed'
+        })
       } catch (error) {
         console.warn('Token exchange failed', error)
+        captureSentryException(error)
       }
     },
-    []
+    [setCurrentToken]
   )
 
   const login = useCallback(async () => {
@@ -507,11 +759,8 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       console.warn('Failed to unregister push device during logout', error)
     }
 
-    await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY)
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY)
-    setToken(undefined)
-    setProfile(undefined)
-  }, [])
+    await clearStoredSession()
+  }, [clearStoredSession])
 
   const isAuthenticated = Boolean(token)
 

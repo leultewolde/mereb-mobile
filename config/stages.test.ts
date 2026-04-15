@@ -96,6 +96,47 @@ describe('mobile stages', () => {
     })
   })
 
+  it('enables Sentry by default only for production when a DSN is present', () => {
+    expect(
+      resolveStageConfig('dev', {
+        SENTRY_DSN: 'https://examplePublicKey@o0.ingest.sentry.io/1'
+      }).sentry.enabled
+    ).toBe(false)
+
+    expect(
+      resolveStageConfig('prd', {
+        SENTRY_DSN: 'https://examplePublicKey@o0.ingest.sentry.io/1'
+      }).sentry.enabled
+    ).toBe(true)
+  })
+
+  it('honors explicit Sentry overrides for startup probes and replay rates', () => {
+    const config = resolveStageConfig('prd', {
+      SENTRY_DSN: 'https://examplePublicKey@o0.ingest.sentry.io/1',
+      SENTRY_ENABLED: 'false',
+      SENTRY_STARTUP_TEST_EVENT: 'true',
+      SENTRY_REPLAYS_SESSION_SAMPLE_RATE: '1',
+      SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: '0.5'
+    })
+
+    expect(config.sentry).toMatchObject({
+      dsn: 'https://examplePublicKey@o0.ingest.sentry.io/1',
+      enabled: false,
+      environment: 'prd',
+      startupTestEvent: true,
+      replaysSessionSampleRate: 1,
+      replaysOnErrorSampleRate: 0.5
+    })
+
+    expect(config.extra).toMatchObject({
+      SENTRY_DSN: 'https://examplePublicKey@o0.ingest.sentry.io/1',
+      SENTRY_ENABLED: 'false',
+      SENTRY_STARTUP_TEST_EVENT: 'true',
+      SENTRY_REPLAYS_SESSION_SAMPLE_RATE: '1',
+      SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: '0.5'
+    })
+  })
+
   itWithMonorepoContract('keeps the default local stage aligned with local infra auth settings', () => {
     const localConfig = resolveStageConfig('local')
     const localCompose = read('infra/local/compose.yaml')

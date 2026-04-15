@@ -10,6 +10,13 @@ type SentryUser = {
   email?: string
 }
 
+type SentryBreadcrumbInput = {
+  category: string
+  message: string
+  data?: Record<string, unknown>
+  level?: 'fatal' | 'error' | 'warning' | 'log' | 'info' | 'debug'
+}
+
 const sentryDsn = config.sentry.dsn?.trim()
 const sentryEnabled = config.sentry.enabled && Boolean(sentryDsn)
 const sentryStartupTestEvent = config.sentry.startupTestEvent
@@ -125,6 +132,19 @@ export function captureSentryException(error: unknown): void {
   }
 
   Sentry.captureException(error)
+}
+
+export function addSentryBreadcrumb(input: SentryBreadcrumbInput): void {
+  if (!sentryEnabled) {
+    return
+  }
+
+  Sentry.addBreadcrumb({
+    category: input.category,
+    message: input.message,
+    data: input.data,
+    level: input.level ?? 'info'
+  })
 }
 
 export function withSentryRoot<T extends ComponentType<any>>(RootComponent: T): T {
