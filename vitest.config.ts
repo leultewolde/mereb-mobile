@@ -39,7 +39,7 @@ export default defineConfig({
       'config/**/*.test.ts',
       'monitoring/**/*.test.ts',
       'providers/**/*.test.tsx',
-      'app/**/*.test.tsx',
+      'test/**/*.test.tsx',
       'app.config.test.ts'
     ],
     restoreMocks: true,

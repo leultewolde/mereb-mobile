@@ -44,7 +44,7 @@ describe('NotificationsSettingsScreen', () => {
     )
 
     const { render } = await import('@testing-library/react-native/pure')
-    const { default: NotificationsSettingsScreen } = await import('./notifications')
+    const { default: NotificationsSettingsScreen } = await import('../../app/settings/notifications')
     const view = render(<NotificationsSettingsScreen />)
 
     expect(view.getByText('Notifications unavailable')).toBeTruthy()
@@ -60,7 +60,7 @@ describe('NotificationsSettingsScreen', () => {
     useNotificationsMock.mockReturnValue(value)
 
     const { act, fireEvent, render, waitFor } = await import('@testing-library/react-native/pure')
-    const { default: NotificationsSettingsScreen } = await import('./notifications')
+    const { default: NotificationsSettingsScreen } = await import('../../app/settings/notifications')
     const view = render(<NotificationsSettingsScreen />)
     const button = view.getByText('Open system settings')
 
@@ -83,7 +83,7 @@ describe('NotificationsSettingsScreen', () => {
     useNotificationsMock.mockReturnValue(value)
 
     const { act, fireEvent, render, waitFor } = await import('@testing-library/react-native/pure')
-    const { default: NotificationsSettingsScreen } = await import('./notifications')
+    const { default: NotificationsSettingsScreen } = await import('../../app/settings/notifications')
     const view = render(<NotificationsSettingsScreen />)
     const button = view.getByText('Enable notifications')
 
@@ -106,7 +106,7 @@ describe('NotificationsSettingsScreen', () => {
     useNotificationsMock.mockReturnValue(value)
 
     const { act, fireEvent, render, waitFor } = await import('@testing-library/react-native/pure')
-    const { default: NotificationsSettingsScreen } = await import('./notifications')
+    const { default: NotificationsSettingsScreen } = await import('../../app/settings/notifications')
     const view = render(<NotificationsSettingsScreen />)
     const toggle = view.UNSAFE_getByProps({
       value: true,

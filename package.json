@@ -19,7 +19,7 @@
     "lint": "pnpm exec eslint .",
     "test": "pnpm exec vitest run --config vitest.config.ts --coverage",
     "test:unit": "pnpm exec vitest run --config vitest.config.ts --coverage",
-    "test:native": "pnpm exec vitest run --config vitest.config.ts providers/**/*.test.tsx app/**/*.test.tsx --coverage",
+    "test:native": "pnpm exec vitest run --config vitest.config.ts providers/**/*.test.tsx test/**/*.test.tsx --coverage",
     "test:config": "pnpm exec vitest run --config vitest.config.ts config/stages.test.ts config/index.test.ts app.config.test.ts",
     "test:monitoring": "pnpm exec vitest run --config vitest.config.ts monitoring/sentry.test.ts",
     "build:local": "pnpm run prepare:packages && APP_STAGE=local npx eas-cli build --profile local --platform all",
