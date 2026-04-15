@@ -137,14 +137,6 @@ const config: ExpoConfig = {
           useFrameworks: 'static'
         }
       }
-    ],
-    [
-      '@sentry/react-native/expo',
-      {
-        url: 'https://sentry.io/',
-        project: 'mereb-social',
-        organization: 'rmhy'
-      }
     ]
   ],
   extra: {
