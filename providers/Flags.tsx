@@ -8,6 +8,7 @@ import {
   useMemo,
   useState
 } from 'react'
+import { logSentryWarn } from '../monitoring/sentry'
 
 export type PublicFlags = Record<string, boolean> & {
   inviteOnlyRegistration: boolean
@@ -122,6 +123,11 @@ export function FlagsProvider({
           setError(undefined)
         }
       } catch (error) {
+        logSentryWarn('Failed to load feature flags', {
+          endpoint,
+          has_auth_token: Boolean(token),
+          error_message: error instanceof Error ? error.message : String(error)
+        })
         if (!cancelled && __DEV__) {
           console.warn('Failed to load feature flags', error)
         }

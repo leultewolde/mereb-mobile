@@ -26,7 +26,12 @@ import {
 } from 'react'
 import {
   addSentryBreadcrumb,
-  captureSentryException
+  captureSentryException,
+  countSentryMetric,
+  distributionSentryMetric,
+  logSentryError,
+  logSentryInfo,
+  logSentryWarn
 } from '../monitoring/sentry'
 
 const INSTALLATION_ID_STORAGE_KEY = 'notifications.installationId'
@@ -345,6 +350,14 @@ export function NotificationsProvider({
       await writeCachedDirectMessagesEnabled(enabled)
     } catch (error) {
       captureSentryException(error)
+      countSentryMetric('notification_cache_persist_failure', 1, {
+        unit: 'attempt',
+        attributes: { enabled }
+      })
+      logSentryError('Notification preference cache persistence failed', {
+        enabled,
+        error_message: error instanceof Error ? error.message : String(error)
+      })
       addSentryBreadcrumb({
         category: 'notifications',
         message: 'Failed to persist cached notification preference',
@@ -389,6 +402,12 @@ export function NotificationsProvider({
     } catch (error) {
       console.warn('Failed to read notification permissions', error)
       captureSentryException(error)
+      countSentryMetric('notification_permission_status_read_failure', 1, {
+        unit: 'attempt'
+      })
+      logSentryError('Notification permission status read failed', {
+        error_message: error instanceof Error ? error.message : String(error)
+      })
       setOsStatus('unknown')
     } finally {
       setPermissionReady(true)
@@ -413,6 +432,13 @@ export function NotificationsProvider({
         message: 'Opened conversation from notification',
         data: { conversationId }
       })
+      logSentryInfo('Opened messaging conversation from notification', {
+        conversation_id: conversationId
+      })
+      countSentryMetric('notification_open', 1, {
+        unit: 'notification',
+        attributes: { type: 'message' }
+      })
       router.push(`/messages/${encodeURIComponent(conversationId)}`)
     },
     [router]
@@ -432,6 +458,7 @@ export function NotificationsProvider({
       }
 
       setRegistrationSaving(true)
+      const registrationStartedAt = Date.now()
 
       try {
         await ensureAndroidMessagesChannel()
@@ -472,9 +499,36 @@ export function NotificationsProvider({
           installationId,
           expoPushToken
         }
+        countSentryMetric('push_device_register_success', 1, {
+          unit: 'device',
+          attributes: { platform: Platform.OS }
+        })
+        distributionSentryMetric(
+          'push_device_register_duration',
+          Date.now() - registrationStartedAt,
+          {
+            unit: 'millisecond',
+            attributes: { platform: Platform.OS }
+          }
+        )
+        logSentryInfo('Push device registered for direct-message notifications', {
+          installation_id: installationId,
+          user_id: userId,
+          platform: Platform.OS
+        })
       } catch (error) {
         console.warn('Failed to upsert push device', error)
         captureSentryException(error)
+        countSentryMetric('push_device_register_failure', 1, {
+          unit: 'device',
+          attributes: { platform: Platform.OS }
+        })
+        logSentryError('Push device registration failed', {
+          installation_id: installationId,
+          user_id: userId,
+          platform: Platform.OS,
+          error_message: error instanceof Error ? error.message : String(error)
+        })
         addSentryBreadcrumb({
           category: 'notifications',
           message: 'Push device registration failed',
@@ -515,14 +569,29 @@ export function NotificationsProvider({
         variables: { installationId }
       })
       registeredStateRef.current = null
+      countSentryMetric('push_device_unregister_success', 1, {
+        unit: 'device'
+      })
       addSentryBreadcrumb({
         category: 'notifications',
         message: 'Push device unregistered',
         data: { installationId, userId }
       })
+      logSentryInfo('Push device unregistered', {
+        installation_id: installationId,
+        user_id: userId
+      })
     } catch (error) {
       console.warn('Failed to remove push device', error)
       captureSentryException(error)
+      countSentryMetric('push_device_unregister_failure', 1, {
+        unit: 'device'
+      })
+      logSentryError('Push device unregister failed', {
+        installation_id: installationId,
+        user_id: userId,
+        error_message: error instanceof Error ? error.message : String(error)
+      })
     }
   }, [authToken, installationId, removePushDevice, userId])
 
@@ -535,6 +604,15 @@ export function NotificationsProvider({
       const permissions = await Notifications.requestPermissionsAsync()
       const nextStatus = mapPermissionStatus(permissions)
       setOsStatus(nextStatus)
+      countSentryMetric('notification_permission_request', 1, {
+        unit: 'request',
+        attributes: { status: nextStatus }
+      })
+      const logPermissionStatus =
+        nextStatus === 'granted' ? logSentryInfo : logSentryWarn
+      logPermissionStatus('Notification permission request resolved', {
+        status: nextStatus
+      })
       addSentryBreadcrumb({
         category: 'notifications',
         message: 'Requested notification permissions',
@@ -544,6 +622,12 @@ export function NotificationsProvider({
     } catch (error) {
       console.warn('Failed to request notification permissions', error)
       captureSentryException(error)
+      countSentryMetric('notification_permission_request_failure', 1, {
+        unit: 'request'
+      })
+      logSentryError('Notification permission request failed', {
+        error_message: error instanceof Error ? error.message : String(error)
+      })
       return 'unknown'
     } finally {
       setPermissionReady(true)
@@ -565,6 +649,7 @@ export function NotificationsProvider({
       }
 
       setSettingsSaving(true)
+      const updateStartedAt = Date.now()
 
       try {
         addSentryBreadcrumb({
@@ -612,8 +697,33 @@ export function NotificationsProvider({
         if (!enabled) {
           await unregisterCurrentDevice()
         }
+        countSentryMetric('notification_preference_update_success', 1, {
+          unit: 'setting',
+          attributes: { enabled, os_status: effectiveStatus }
+        })
+        distributionSentryMetric(
+          'notification_preference_update_duration',
+          Date.now() - updateStartedAt,
+          {
+            unit: 'millisecond',
+            attributes: { enabled, os_status: effectiveStatus }
+          }
+        )
+        logSentryInfo('Direct-message notification preference updated', {
+          enabled,
+          os_status: effectiveStatus
+        })
       } catch (error) {
         captureSentryException(error)
+        countSentryMetric('notification_preference_update_failure', 1, {
+          unit: 'setting',
+          attributes: { enabled, os_status: effectiveStatus }
+        })
+        logSentryError('Direct-message notification preference update failed', {
+          enabled,
+          os_status: effectiveStatus,
+          error_message: error instanceof Error ? error.message : String(error)
+        })
         addSentryBreadcrumb({
           category: 'notifications',
           message: 'Failed to update direct-message notification setting',
@@ -656,6 +766,12 @@ export function NotificationsProvider({
       } catch (error) {
         console.warn('Failed to load notification installation state', error)
         captureSentryException(error)
+        countSentryMetric('notification_installation_bootstrap_failure', 1, {
+          unit: 'attempt'
+        })
+        logSentryError('Notification installation bootstrap failed', {
+          error_message: error instanceof Error ? error.message : String(error)
+        })
       } finally {
         if (!cancelled) {
           setInstallationReady(true)
@@ -693,6 +809,12 @@ export function NotificationsProvider({
 
     lastSettingsErrorRef.current = errorKey
     captureSentryException(settingsQuery.error)
+    countSentryMetric('notification_settings_query_failure', 1, {
+      unit: 'attempt'
+    })
+    logSentryError('Notification settings query failed', {
+      error_message: settingsQuery.error.message
+    })
     addSentryBreadcrumb({
       category: 'notifications',
       message: 'Failed to load notification settings',
@@ -771,6 +893,12 @@ export function NotificationsProvider({
     }
 
     const subscription = Notifications.addPushTokenListener((event) => {
+      countSentryMetric('push_token_rotation', 1, {
+        unit: 'token'
+      })
+      logSentryInfo('Expo push token rotated', {
+        installation_id: installationId
+      })
       void registerPushDevice(event.data)
     })
 

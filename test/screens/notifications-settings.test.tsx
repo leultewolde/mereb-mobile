@@ -7,6 +7,10 @@ vi.mock('../../providers/Notifications', () => ({
   useNotifications: useNotificationsMock
 }))
 
+vi.mock('../../monitoring/sentry', () => ({
+  logSentryWarn: vi.fn()
+}))
+
 type NotificationContextMock = ReturnType<typeof useNotificationsMock>
 
 function createNotificationsValue(

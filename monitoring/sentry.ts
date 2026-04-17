@@ -17,6 +17,16 @@ type SentryBreadcrumbInput = {
   level?: 'fatal' | 'error' | 'warning' | 'log' | 'info' | 'debug'
 }
 
+type SentryLogAttributes = Record<
+  string,
+  string | number | boolean | null | undefined
+>
+
+type SentryMetricOptions = {
+  unit?: string
+  attributes?: SentryLogAttributes
+}
+
 const sentryDsn = config.sentry.dsn?.trim()
 const sentryEnabled = config.sentry.enabled && Boolean(sentryDsn)
 const sentryStartupTestEvent = config.sentry.startupTestEvent
@@ -101,6 +111,7 @@ export function initializeSentry(): void {
     release: buildRelease(),
     attachStacktrace: true,
     sendDefaultPii: false,
+    enableLogs: true,
     replaysSessionSampleRate: config.sentry.replaysSessionSampleRate,
     replaysOnErrorSampleRate: config.sentry.replaysOnErrorSampleRate,
     ...(integrations ? { integrations } : {})
@@ -132,6 +143,127 @@ export function captureSentryException(error: unknown): void {
   }
 
   Sentry.captureException(error)
+}
+
+function sanitizeLogAttributes(
+  attributes?: SentryLogAttributes
+): Record<string, string | number | boolean | null> | undefined {
+  if (!attributes) {
+    return undefined
+  }
+
+  const entries = Object.entries(attributes).filter(
+    (_entry): _entry is [string, string | number | boolean | null] =>
+      _entry[1] !== undefined
+  )
+
+  if (entries.length === 0) {
+    return undefined
+  }
+
+  return Object.fromEntries(entries)
+}
+
+function buildMetricOptions(
+  options?: SentryMetricOptions
+): {
+  unit?: string
+  attributes?: Record<string, string | number | boolean | null>
+} | undefined {
+  if (!options) {
+    return undefined
+  }
+
+  const attributes = sanitizeLogAttributes(options.attributes)
+
+  if (!options.unit && !attributes) {
+    return undefined
+  }
+
+  return {
+    ...(options.unit ? { unit: options.unit } : {}),
+    ...(attributes ? { attributes } : {})
+  }
+}
+
+function logSentryMessage(
+  level: 'info' | 'warn' | 'error',
+  message: string,
+  attributes?: SentryLogAttributes
+): void {
+  if (!sentryEnabled) {
+    return
+  }
+
+  const logger =
+    level === 'info'
+      ? Sentry.logger?.info
+      : level === 'warn'
+        ? Sentry.logger?.warn
+        : Sentry.logger?.error
+
+  if (typeof logger !== 'function') {
+    return
+  }
+
+  logger(message, sanitizeLogAttributes(attributes))
+}
+
+export function logSentryInfo(
+  message: string,
+  attributes?: SentryLogAttributes
+): void {
+  logSentryMessage('info', message, attributes)
+}
+
+export function logSentryWarn(
+  message: string,
+  attributes?: SentryLogAttributes
+): void {
+  logSentryMessage('warn', message, attributes)
+}
+
+export function logSentryError(
+  message: string,
+  attributes?: SentryLogAttributes
+): void {
+  logSentryMessage('error', message, attributes)
+}
+
+export function countSentryMetric(
+  name: string,
+  value: number,
+  options?: SentryMetricOptions
+): void {
+  if (!sentryEnabled || typeof Sentry.metrics?.count !== 'function') {
+    return
+  }
+
+  Sentry.metrics.count(name, value, buildMetricOptions(options))
+}
+
+export function gaugeSentryMetric(
+  name: string,
+  value: number,
+  options?: SentryMetricOptions
+): void {
+  if (!sentryEnabled || typeof Sentry.metrics?.gauge !== 'function') {
+    return
+  }
+
+  Sentry.metrics.gauge(name, value, buildMetricOptions(options))
+}
+
+export function distributionSentryMetric(
+  name: string,
+  value: number,
+  options?: SentryMetricOptions
+): void {
+  if (!sentryEnabled || typeof Sentry.metrics?.distribution !== 'function') {
+    return
+  }
+
+  Sentry.metrics.distribution(name, value, buildMetricOptions(options))
 }
 
 export function addSentryBreadcrumb(input: SentryBreadcrumbInput): void {

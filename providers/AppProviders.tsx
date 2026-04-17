@@ -23,6 +23,12 @@ import { config } from '@mobile/config'
 import {
   addSentryBreadcrumb,
   captureSentryException,
+  countSentryMetric,
+  distributionSentryMetric,
+  gaugeSentryMetric,
+  logSentryError,
+  logSentryInfo,
+  logSentryWarn,
   setSentryUser
 } from '../monitoring/sentry'
 import { FlagsProvider } from './Flags'
@@ -62,6 +68,10 @@ type AuthContextValue = {
   login: () => Promise<void>
   register: () => Promise<void>
   logout: () => Promise<void>
+  refreshSession: (
+    reason?: string,
+    force?: boolean
+  ) => Promise<string | undefined>
   hasRole: (role: string) => boolean
   hasAnyRole: (roles: string[]) => boolean
 }
@@ -124,6 +134,10 @@ function parseJwt(token?: string): TokenPayload | undefined {
       return JSON.parse(decoded) as TokenPayload
     }
   } catch (error) {
+    logSentryWarn('Failed to parse JWT payload', {
+      token_length: token.length,
+      error_message: error instanceof Error ? error.message : String(error)
+    })
     console.warn('Failed to parse JWT payload', error)
     return undefined
   }
@@ -329,6 +343,7 @@ const AuthContext = createContext<AuthContextValue>({
   login: async () => {},
   register: async () => {},
   logout: async () => {},
+  refreshSession: async () => undefined,
   hasRole: () => false,
   hasAnyRole: () => false
 })
@@ -377,6 +392,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
 
   const refreshSessionNow = useCallback(
     async (reason: string, force = false): Promise<string | undefined> => {
+      const refreshStartedAt = Date.now()
       const currentToken = tokenRef.current
 
       if (!isAuthConfigured) {
@@ -404,6 +420,10 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         category: 'auth',
         message: 'Refreshing session',
         data: { reason }
+      })
+      countSentryMetric('auth_refresh_attempt', 1, {
+        unit: 'attempt',
+        attributes: { reason, forced: force }
       })
 
       try {
@@ -435,10 +455,58 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
           message: 'Session refreshed',
           data: { reason }
         })
+        countSentryMetric('auth_refresh_success', 1, {
+          unit: 'attempt',
+          attributes: { reason, forced: force }
+        })
+        distributionSentryMetric(
+          'auth_refresh_duration',
+          Date.now() - refreshStartedAt,
+          {
+            unit: 'millisecond',
+            attributes: { reason, forced: force }
+          }
+        )
+        const accessTokenTtlMs = getAccessTokenExpiryMs(payload.access_token)
+        if (accessTokenTtlMs) {
+          gaugeSentryMetric(
+            'auth_access_token_ttl',
+            Math.max(0, accessTokenTtlMs - Date.now()),
+            {
+              unit: 'millisecond',
+              attributes: { reason }
+            }
+          )
+        }
 
         return payload.access_token
       } catch (error) {
         if (isInvalidGrantError(error)) {
+          countSentryMetric('auth_refresh_failure', 1, {
+            unit: 'attempt',
+            attributes: {
+              reason,
+              forced: force,
+              outcome: 'invalid_grant'
+            }
+          })
+          logSentryWarn('Auth refresh token rejected', {
+            reason,
+            error_code:
+              typeof error === 'object' &&
+              error !== null &&
+              'code' in error &&
+              typeof (error as { code?: unknown }).code === 'string'
+                ? (error as { code?: string }).code
+                : undefined,
+            status:
+              typeof error === 'object' &&
+              error !== null &&
+              'status' in error &&
+              typeof (error as { status?: unknown }).status === 'number'
+                ? (error as { status?: number }).status
+                : undefined
+          })
           addSentryBreadcrumb({
             category: 'auth',
             message: 'Refresh token rejected',
@@ -451,6 +519,25 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         }
 
         console.warn('Refresh token exchange failed', error)
+        countSentryMetric('auth_refresh_failure', 1, {
+          unit: 'attempt',
+          attributes: {
+            reason,
+            forced: force,
+            outcome: 'error',
+            fallback_to_current_token: Boolean(
+              currentToken && isAccessTokenUsable(currentToken)
+            )
+          }
+        })
+        logSentryError('Auth session refresh failed', {
+          reason,
+          has_current_token: Boolean(currentToken),
+          current_token_usable: Boolean(
+            currentToken && isAccessTokenUsable(currentToken)
+          ),
+          error_message: error instanceof Error ? error.message : String(error)
+        })
         addSentryBreadcrumb({
           category: 'auth',
           message: 'Session refresh failed',
@@ -473,12 +560,12 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
   )
 
   const refreshSession = useCallback(
-    (reason: string, force = false): Promise<string | undefined> => {
+    (reason?: string, force = false): Promise<string | undefined> => {
       if (refreshPromiseRef.current) {
         return refreshPromiseRef.current
       }
 
-      const promise = refreshSessionNow(reason, force).finally(() => {
+      const promise = refreshSessionNow(reason ?? 'unspecified', force).finally(() => {
         if (refreshPromiseRef.current === promise) {
           refreshPromiseRef.current = null
         }
@@ -533,6 +620,13 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         category: 'auth',
         message: 'Retrying GraphQL request with refreshed token'
       })
+      logSentryInfo('Retrying GraphQL request after auth refresh')
+      countSentryMetric('graphql_auth_retry', 1, {
+        unit: 'attempt',
+        attributes: {
+          reason: 'graphql-auth-retry'
+        }
+      })
 
       return fetch(uri, {
         ...options,
@@ -576,6 +670,10 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
     const syncStore = token ? apolloClient.resetStore() : apolloClient.clearStore()
     void syncStore.catch((error) => {
       console.warn('Failed to synchronize Apollo cache after auth change', error)
+      logSentryWarn('Apollo cache synchronization failed after auth change', {
+        is_authenticated: Boolean(token),
+        error_message: error instanceof Error ? error.message : String(error)
+      })
     })
   }, [apolloClient, token])
 
@@ -626,6 +724,13 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         await hydrateSession()
       } catch (error) {
         console.error('Failed to initialise Apollo client', error)
+        countSentryMetric('apollo_bootstrap_failure', 1, {
+          unit: 'attempt'
+        })
+        logSentryError('Apollo client bootstrap failed', {
+          error_message: error instanceof Error ? error.message : String(error)
+        })
+        captureSentryException(error)
       } finally {
         if (!cancelled) {
           setReady(true)
@@ -683,8 +788,12 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
 
   const performAuth = useCallback(
     async (extraParams?: Record<string, string>) => {
+      const authStartedAt = Date.now()
       const { clientId } = config.keycloak
       if (!clientId) {
+        logSentryWarn('Interactive auth attempted with incomplete Keycloak config', {
+          missing_client_id: true
+        })
         console.warn('Keycloak configuration is incomplete.')
         return
       }
@@ -736,8 +845,41 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
           category: 'auth',
           message: 'Interactive login completed'
         })
+        countSentryMetric('auth_interactive_success', 1, {
+          unit: 'attempt',
+          attributes: {
+            action: extraParams?.kc_action === 'register' ? 'register' : 'login'
+          }
+        })
+        distributionSentryMetric(
+          'auth_interactive_duration',
+          Date.now() - authStartedAt,
+          {
+            unit: 'millisecond',
+            attributes: {
+              action:
+                extraParams?.kc_action === 'register' ? 'register' : 'login'
+            }
+          }
+        )
+        logSentryInfo('Interactive auth flow completed', {
+          action: extraParams?.kc_action === 'register' ? 'register' : 'login',
+          user_id: payload.access_token
+            ? buildProfile(payload.access_token)?.id
+            : undefined
+        })
       } catch (error) {
         console.warn('Token exchange failed', error)
+        countSentryMetric('auth_interactive_failure', 1, {
+          unit: 'attempt',
+          attributes: {
+            action: extraParams?.kc_action === 'register' ? 'register' : 'login'
+          }
+        })
+        logSentryError('Interactive auth flow failed', {
+          action: extraParams?.kc_action === 'register' ? 'register' : 'login',
+          error_message: error instanceof Error ? error.message : String(error)
+        })
         captureSentryException(error)
       }
     },
@@ -757,6 +899,12 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       await notificationControlsRef.current?.unregisterCurrentDevice()
     } catch (error) {
       console.warn('Failed to unregister push device during logout', error)
+      countSentryMetric('auth_logout_unregister_failure', 1, {
+        unit: 'attempt'
+      })
+      logSentryWarn('Push device unregister failed during logout', {
+        error_message: error instanceof Error ? error.message : String(error)
+      })
     }
 
     await clearStoredSession()
@@ -777,10 +925,11 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       login,
       register,
       logout,
+      refreshSession,
       hasRole: (role: string) => roleSet.has(role),
       hasAnyRole: (roles: string[]) => roles.some((role) => roleSet.has(role))
     }),
-    [ready, isAuthenticated, isAuthConfigured, missingConfigKeys, token, profile, login, register, logout, roleSet]
+    [ready, isAuthenticated, isAuthConfigured, missingConfigKeys, token, profile, login, register, logout, refreshSession, roleSet]
   )
 
   if (!ready || !apolloClient) {

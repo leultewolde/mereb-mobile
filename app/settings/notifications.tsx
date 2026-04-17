@@ -9,6 +9,7 @@ import {
   View
 } from 'react-native'
 import { useCallback } from 'react'
+import { logSentryWarn } from '../../monitoring/sentry'
 import { useNotifications } from '../../providers/Notifications'
 
 function getStatusTitle(status: ReturnType<typeof useNotifications>['osStatus']): string {
@@ -39,6 +40,9 @@ export default function NotificationsSettingsScreen() {
 
   const handleOpenSystemSettings = useCallback(() => {
     notifications.openSystemSettings().catch((error: unknown) => {
+      logSentryWarn('Failed to open system settings from notification screen', {
+        error_message: error instanceof Error ? error.message : String(error)
+      })
       if (__DEV__) {
         console.warn('Failed to open system settings', error)
       }
@@ -47,6 +51,9 @@ export default function NotificationsSettingsScreen() {
 
   const handleRequestPermission = useCallback(() => {
     notifications.requestPermission().catch((error: unknown) => {
+      logSentryWarn('Failed to request notification permission from settings screen', {
+        error_message: error instanceof Error ? error.message : String(error)
+      })
       if (__DEV__) {
         console.warn('Failed to request notification permissions', error)
       }
@@ -55,6 +62,10 @@ export default function NotificationsSettingsScreen() {
 
   const handleDirectMessagesToggle = useCallback((value: boolean) => {
     notifications.setDirectMessagesEnabled(value).catch((error: unknown) => {
+      logSentryWarn('Failed to update direct-message preference from settings screen', {
+        next_value: value,
+        error_message: error instanceof Error ? error.message : String(error)
+      })
       if (__DEV__) {
         console.warn('Failed to update direct-message preference', error)
       }

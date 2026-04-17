@@ -178,6 +178,11 @@ async function loadNotificationsModule(options?: {
 
   const addBreadcrumb = vi.fn()
   const captureSentryException = vi.fn()
+  const countSentryMetric = vi.fn()
+  const distributionSentryMetric = vi.fn()
+  const logSentryError = vi.fn()
+  const logSentryInfo = vi.fn()
+  const logSentryWarn = vi.fn()
   const pushMock = vi.fn()
   const responseListeners: ((
     response: NonNullable<typeof options>['lastNotificationResponse']
@@ -286,7 +291,12 @@ async function loadNotificationsModule(options?: {
 
   vi.doMock('../monitoring/sentry', () => ({
     addSentryBreadcrumb: addBreadcrumb,
-    captureSentryException
+    captureSentryException,
+    countSentryMetric,
+    distributionSentryMetric,
+    logSentryError,
+    logSentryInfo,
+    logSentryWarn
   }))
 
   const module = (await import('./Notifications')) as LoadedNotificationsModule
@@ -298,8 +308,13 @@ async function loadNotificationsModule(options?: {
       addNotificationResponseReceivedListener,
       addPushTokenListener,
       captureSentryException,
+      countSentryMetric,
+      distributionSentryMetric,
       getExpoPushTokenAsync,
       getPermissionsAsync,
+      logSentryError,
+      logSentryInfo,
+      logSentryWarn,
       pushMock,
       refetch,
       removePushDevice,
@@ -444,6 +459,62 @@ describe('NotificationsProvider', () => {
       'true'
     )
     expect(mocks.writeQuery).toHaveBeenCalled()
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'notification_permission_request',
+      1,
+      {
+        unit: 'request',
+        attributes: {
+          status: 'granted'
+        }
+      }
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'notification_preference_update_success',
+      1,
+      {
+        unit: 'setting',
+        attributes: {
+          enabled: true,
+          os_status: 'granted'
+        }
+      }
+    )
+    expect(mocks.distributionSentryMetric).toHaveBeenCalledWith(
+      'notification_preference_update_duration',
+      expect.any(Number),
+      expect.objectContaining({
+        unit: 'millisecond',
+        attributes: {
+          enabled: true,
+          os_status: 'granted'
+        }
+      })
+    )
+    expect(mocks.logSentryInfo).toHaveBeenCalledWith(
+      'Direct-message notification preference updated',
+      expect.objectContaining({
+        enabled: true,
+        os_status: 'granted'
+      })
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'push_device_register_success',
+      1,
+      {
+        unit: 'device',
+        attributes: {
+          platform: 'ios'
+        }
+      }
+    )
+    expect(mocks.logSentryInfo).toHaveBeenCalledWith(
+      'Push device registered for direct-message notifications',
+      expect.objectContaining({
+        installation_id: 'installation-1',
+        user_id: 'user-1'
+      })
+    )
 
     unmount()
   })
@@ -518,6 +589,22 @@ describe('NotificationsProvider', () => {
     await waitForExpectation(() => {
       expect(mocks.pushMock).toHaveBeenCalledWith('/messages/conversation-1')
     })
+    expect(mocks.logSentryInfo).toHaveBeenCalledWith(
+      'Opened messaging conversation from notification',
+      expect.objectContaining({
+        conversation_id: 'conversation-1'
+      })
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'notification_open',
+      1,
+      {
+        unit: 'notification',
+        attributes: {
+          type: 'message'
+        }
+      }
+    )
 
     unmount()
   })
@@ -569,6 +656,19 @@ describe('NotificationsProvider', () => {
         expect.objectContaining({ message: 'permission read failed' })
       )
     })
+    expect(mocks.logSentryError).toHaveBeenCalledWith(
+      'Notification permission status read failed',
+      expect.objectContaining({
+        error_message: 'permission read failed'
+      })
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'notification_permission_status_read_failure',
+      1,
+      {
+        unit: 'attempt'
+      }
+    )
 
     mocks.getPermissionsAsync.mockReset()
     mocks.getPermissionsAsync.mockResolvedValueOnce({
@@ -744,6 +844,48 @@ describe('NotificationsProvider', () => {
     unmount()
   })
 
+  it('captures installation bootstrap and settings query failures', async () => {
+    const { module, mocks } = await loadNotificationsModule({
+      asyncStorageGetItemError: new Error('installation bootstrap failed'),
+      settingsError: new Error('settings query failed')
+    })
+    const { result, unmount } = renderNotificationsProvider(module, {
+      authToken: 'token-1',
+      userId: 'user-1',
+      isAuthenticated: true
+    })
+
+    await waitForExpectation(() => {
+      expect(result.current.isReady).toBe(true)
+    })
+
+    expect(mocks.captureSentryException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'installation bootstrap failed' })
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'notification_installation_bootstrap_failure',
+      1,
+      {
+        unit: 'attempt'
+      }
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'notification_settings_query_failure',
+      1,
+      {
+        unit: 'attempt'
+      }
+    )
+    expect(mocks.logSentryError).toHaveBeenCalledWith(
+      'Notification settings query failed',
+      expect.objectContaining({
+        error_message: 'settings query failed'
+      })
+    )
+
+    unmount()
+  })
+
   it('captures push-device registration failures and still clears saving state', async () => {
     const nativeTestState = getNativeTestState()
     nativeTestState.platformState.OS = 'android'
@@ -769,6 +911,22 @@ describe('NotificationsProvider', () => {
 
     expect(mocks.setNotificationChannelAsync).toHaveBeenCalled()
     expect(result.current.settingsSaving).toBe(false)
+    expect(mocks.logSentryError).toHaveBeenCalledWith(
+      'Push device registration failed',
+      expect.objectContaining({
+        installation_id: expect.any(String),
+      })
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'push_device_register_failure',
+      1,
+      {
+        unit: 'device',
+        attributes: {
+          platform: 'android'
+        }
+      }
+    )
 
     unmount()
   })

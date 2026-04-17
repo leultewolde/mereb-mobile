@@ -1,6 +1,23 @@
 import { ComposeMessageScreen } from '@mereb/app-messaging/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
+import {
+  countSentryMetric,
+  distributionSentryMetric,
+  gaugeSentryMetric,
+  logSentryError,
+  logSentryInfo,
+  logSentryWarn
+} from '../../monitoring/sentry';
 import { useAuth } from '../../providers/AppProviders';
+
+const messagingMonitoring = {
+  countMetric: countSentryMetric,
+  gaugeMetric: gaugeSentryMetric,
+  distributionMetric: distributionSentryMetric,
+  info: logSentryInfo,
+  warn: logSentryWarn,
+  error: logSentryError
+};
 
 export default function NewConversationRoute() {
   const router = useRouter();
@@ -18,6 +35,7 @@ export default function NewConversationRoute() {
   return (
     <ComposeMessageScreen
       auth={auth}
+      monitoring={messagingMonitoring}
       initialUser={
         userId && handle && displayName
           ? {
