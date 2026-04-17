@@ -3,6 +3,7 @@ import type { PropsWithChildren } from 'react'
 import { usePathname, useRouter } from 'expo-router'
 import { tokens } from '@mereb/tokens/native'
 import { config } from '@mobile/config'
+import { logSentryWarn } from '../monitoring/sentry'
 import { useAuth } from '../providers/AppProviders'
 import { type PublicFlags, useFlags } from '../providers/Flags'
 
@@ -47,6 +48,10 @@ function openExternalUrl(url: string) {
   }
 
   void Linking.openURL(url).catch((error) => {
+    logSentryWarn('Failed to open external URL', {
+      url,
+      error_message: error instanceof Error ? error.message : String(error)
+    })
     if (__DEV__) {
       console.warn(`Failed to open external URL: ${url}`, error)
     }

@@ -2,6 +2,7 @@ import { ProfileScreen } from '@mereb/app-profile/native';
 import { useRouter } from 'expo-router';
 import { Linking } from 'react-native';
 import { config } from '@mobile/config';
+import { logSentryWarn } from '../../monitoring/sentry';
 import { useAuth } from '../../providers/AppProviders';
 
 export default function ProfileTabScreen() {
@@ -13,6 +14,10 @@ export default function ProfileTabScreen() {
     }
 
     void Linking.openURL(url).catch((error) => {
+      logSentryWarn('Failed to open external URL', {
+        url,
+        error_message: error instanceof Error ? error.message : String(error)
+      });
       if (__DEV__) {
         console.warn(`Failed to open external URL: ${url}`, error);
       }

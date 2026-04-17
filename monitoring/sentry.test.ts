@@ -47,6 +47,12 @@ async function loadSentryModule(options?: {
   const addBreadcrumb = vi.fn()
   const init = vi.fn()
   const wrap = vi.fn((component) => component)
+  const loggerInfo = vi.fn()
+  const loggerWarn = vi.fn()
+  const loggerError = vi.fn()
+  const metricCount = vi.fn()
+  const metricGauge = vi.fn()
+  const metricDistribution = vi.fn()
   const setTag = vi.fn()
   const setExtra = vi.fn()
   const withScope = vi.fn((callback: (scope: { setTag: typeof setTag; setExtra: typeof setExtra }) => void) => {
@@ -88,6 +94,16 @@ async function loadSentryModule(options?: {
     captureException,
     setUser,
     addBreadcrumb,
+    logger: {
+      info: loggerInfo,
+      warn: loggerWarn,
+      error: loggerError
+    },
+    metrics: {
+      count: metricCount,
+      gauge: metricGauge,
+      distribution: metricDistribution
+    },
     wrap,
     withScope,
     mobileReplayIntegration
@@ -103,6 +119,12 @@ async function loadSentryModule(options?: {
       flush,
       getItem,
       init,
+      loggerError,
+      loggerInfo,
+      loggerWarn,
+      metricCount,
+      metricDistribution,
+      metricGauge,
       mobileReplayIntegration,
       setExtra,
       setItem,
@@ -226,6 +248,29 @@ describe('mobile sentry monitoring', () => {
       category: 'notifications',
       message: 'registered device'
     })
+    module.logSentryInfo('session refreshed', {
+      reason: 'foreground',
+      retried: true,
+      ignored: undefined
+    })
+    module.logSentryWarn('refresh rejected', {
+      reason: 'graphql-auth-retry'
+    })
+    module.logSentryError('push registration failed', {
+      installation_id: 'install-1'
+    })
+    module.countSentryMetric('network_request', 1, {
+      unit: 'request',
+      attributes: {
+        endpoint: '/api/users',
+        method: 'POST',
+        ignored: undefined
+      }
+    })
+    module.gaugeSentryMetric('queue_depth', 42)
+    module.distributionSentryMetric('response_time', 187.5, {
+      unit: 'millisecond'
+    })
 
     expect(module.withSentryRoot(RootComponent)).toBe(RootComponent)
     expect(mocks.setUser).toHaveBeenNthCalledWith(1, {
@@ -241,6 +286,29 @@ describe('mobile sentry monitoring', () => {
       data: undefined,
       level: 'info'
     })
+    expect(mocks.loggerInfo).toHaveBeenCalledWith('session refreshed', {
+      reason: 'foreground',
+      retried: true
+    })
+    expect(mocks.loggerWarn).toHaveBeenCalledWith('refresh rejected', {
+      reason: 'graphql-auth-retry'
+    })
+    expect(mocks.loggerError).toHaveBeenCalledWith('push registration failed', {
+      installation_id: 'install-1'
+    })
+    expect(mocks.metricCount).toHaveBeenCalledWith('network_request', 1, {
+      unit: 'request',
+      attributes: {
+        endpoint: '/api/users',
+        method: 'POST'
+      }
+    })
+    expect(mocks.metricGauge).toHaveBeenCalledWith('queue_depth', 42, undefined)
+    expect(mocks.metricDistribution).toHaveBeenCalledWith(
+      'response_time',
+      187.5,
+      { unit: 'millisecond' }
+    )
     expect(mocks.wrap).toHaveBeenCalledWith(RootComponent)
   })
 

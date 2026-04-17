@@ -73,6 +73,12 @@ async function loadAppProvidersModule(options?: {
 
   const addBreadcrumb = vi.fn()
   const captureSentryException = vi.fn()
+  const countSentryMetric = vi.fn()
+  const distributionSentryMetric = vi.fn()
+  const gaugeSentryMetric = vi.fn()
+  const logSentryError = vi.fn()
+  const logSentryInfo = vi.fn()
+  const logSentryWarn = vi.fn()
   const setSentryUser = vi.fn()
   const notificationsUnregister = vi.fn(async () => {
     if (options?.notificationsUnregisterError) {
@@ -201,6 +207,12 @@ async function loadAppProvidersModule(options?: {
   vi.doMock('../monitoring/sentry', () => ({
     addSentryBreadcrumb: addBreadcrumb,
     captureSentryException,
+    countSentryMetric,
+    distributionSentryMetric,
+    gaugeSentryMetric,
+    logSentryError,
+    logSentryInfo,
+    logSentryWarn,
     setSentryUser
   }))
 
@@ -257,14 +269,20 @@ async function loadAppProvidersModule(options?: {
       authRequestInstance: () => authRequestInstance,
       authRequestOptions: () => authRequestOptions,
       captureSentryException,
+      countSentryMetric,
       deleteItemAsync,
       diffMock,
+      distributionSentryMetric,
       fetchDiscoveryAsync,
       fetchMock,
       flagsProps,
+      gaugeSentryMetric,
       getCache: () => lastCache,
       getItemAsync,
       graphqlFetch: () => graphqlFetch,
+      logSentryError,
+      logSentryInfo,
+      logSentryWarn,
       makeRedirectUri,
       notificationsProps,
       notificationsUnregister,
@@ -401,6 +419,47 @@ describe('AppProviders', () => {
     )
     expect(mocks.setItemAsync).toHaveBeenCalledWith('access_token', refreshedToken)
     expect(mocks.setItemAsync).toHaveBeenCalledWith('refresh_token', 'refresh-token-2')
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'auth_refresh_attempt',
+      1,
+      expect.objectContaining({
+        unit: 'attempt',
+        attributes: expect.objectContaining({
+          reason: 'bootstrap',
+          forced: true
+        })
+      })
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'auth_refresh_success',
+      1,
+      expect.objectContaining({
+        unit: 'attempt',
+        attributes: expect.objectContaining({
+          reason: 'bootstrap',
+          forced: true
+        })
+      })
+    )
+    expect(mocks.distributionSentryMetric).toHaveBeenCalledWith(
+      'auth_refresh_duration',
+      expect.any(Number),
+      expect.objectContaining({
+        unit: 'millisecond',
+        attributes: expect.objectContaining({
+          reason: 'bootstrap',
+          forced: true
+        })
+      })
+    )
+    expect(mocks.gaugeSentryMetric).toHaveBeenCalledWith(
+      'auth_access_token_ttl',
+      expect.any(Number),
+      expect.objectContaining({
+        unit: 'millisecond',
+        attributes: { reason: 'bootstrap' }
+      })
+    )
 
     unmount()
   })
@@ -500,6 +559,19 @@ describe('AppProviders', () => {
         })
       })
     )
+    expect(mocks.logSentryInfo).toHaveBeenCalledWith(
+      'Retrying GraphQL request after auth refresh'
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'graphql_auth_retry',
+      1,
+      {
+        unit: 'attempt',
+        attributes: {
+          reason: 'graphql-auth-retry'
+        }
+      }
+    )
 
     unmount()
   })
@@ -545,6 +617,23 @@ describe('AppProviders', () => {
     })
     expect(mocks.authRequestInstance()?.promptAsync).toHaveBeenCalled()
     expect(mocks.setItemAsync).toHaveBeenCalledWith('access_token', loginToken)
+    expect(mocks.logSentryInfo).toHaveBeenCalledWith(
+      'Interactive auth flow completed',
+      expect.objectContaining({
+        action: 'login',
+        user_id: 'user-1'
+      })
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'auth_interactive_success',
+      1,
+      {
+        unit: 'attempt',
+        attributes: {
+          action: 'login'
+        }
+      }
+    )
 
     await act(async () => {
       await result.current.register()
@@ -557,6 +646,23 @@ describe('AppProviders', () => {
       }
     })
     expect(mocks.setItemAsync).toHaveBeenCalledWith('access_token', registerToken)
+    expect(mocks.logSentryInfo).toHaveBeenCalledWith(
+      'Interactive auth flow completed',
+      expect.objectContaining({
+        action: 'register',
+        user_id: 'user-2'
+      })
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'auth_interactive_success',
+      1,
+      {
+        unit: 'attempt',
+        attributes: {
+          action: 'register'
+        }
+      }
+    )
 
     await act(async () => {
       await result.current.logout()
@@ -823,8 +929,49 @@ describe('AppProviders', () => {
     expect(result.current.isAuthenticated).toBe(false)
     expect(mocks.captureSentryException).toHaveBeenCalled()
     expect(warningSpy).toHaveBeenCalledWith('Token exchange failed', expect.any(Error))
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'auth_interactive_failure',
+      1,
+      {
+        unit: 'attempt',
+        attributes: {
+          action: 'login'
+        }
+      }
+    )
 
     warningSpy.mockRestore()
+    unmount()
+  })
+
+  it('keeps the session logged out when interactive auth returns no tokens', async () => {
+    const { module, mocks } = await loadAppProvidersModule({
+      fetchResponses: [
+        createJsonResponse({})
+      ]
+    })
+    const { result, unmount } = renderAppProviders(module)
+
+    await waitForExpectation(() => {
+      expect(result.current.isReady).toBe(true)
+    })
+
+    await act(async () => {
+      await result.current.login()
+      await flushMicrotasks()
+    })
+
+    expect(result.current.isAuthenticated).toBe(false)
+    expect(mocks.deleteItemAsync).toHaveBeenCalledWith('access_token')
+    expect(mocks.deleteItemAsync).toHaveBeenCalledWith('refresh_token')
+    expect(mocks.logSentryInfo).toHaveBeenCalledWith(
+      'Interactive auth flow completed',
+      expect.objectContaining({
+        action: 'login',
+        user_id: undefined
+      })
+    )
+
     unmount()
   })
 
@@ -856,6 +1003,13 @@ describe('AppProviders', () => {
     expect(warningSpy).toHaveBeenCalledWith(
       'Failed to unregister push device during logout',
       expect.any(Error)
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'auth_logout_unregister_failure',
+      1,
+      {
+        unit: 'attempt'
+      }
     )
     expect(mocks.deleteItemAsync).toHaveBeenCalledWith('access_token')
     expect(mocks.deleteItemAsync).toHaveBeenCalledWith('refresh_token')

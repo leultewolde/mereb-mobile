@@ -7,6 +7,10 @@ import {
   waitForExpectation
 } from '../test/react-test-utils'
 
+vi.mock('../monitoring/sentry', () => ({
+  logSentryWarn: vi.fn()
+}))
+
 type LoadedFlagsModule = typeof import('./Flags')
 type FetchMockImpl = (
   input?: RequestInfo | URL,
