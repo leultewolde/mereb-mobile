@@ -30,6 +30,20 @@ type SentryMetricOptions = {
 const sentryDsn = config.sentry.dsn?.trim()
 const sentryEnabled = config.sentry.enabled && Boolean(sentryDsn)
 const sentryStartupTestEvent = config.sentry.startupTestEvent
+const sentryTracesSampleRate = config.sentry.tracesSampleRate
+
+const sentryHasTracingEnabled =
+  sentryEnabled && typeof sentryTracesSampleRate === 'number' && sentryTracesSampleRate > 0
+
+type NavigationIntegration = ReturnType<typeof Sentry.reactNavigationIntegration>
+type Integration = Parameters<typeof Sentry.addIntegration>[0]
+
+const navigationIntegration: NavigationIntegration | undefined =
+  sentryHasTracingEnabled && typeof Sentry.reactNavigationIntegration === 'function'
+    ? Sentry.reactNavigationIntegration({
+        enablePrefetchTracking: true
+      })
+    : undefined
 
 function buildProbeStorageKey(): string | undefined {
   const release = buildRelease()
@@ -93,16 +107,21 @@ export function initializeSentry(): void {
     return
   }
 
-  const integrations =
-    typeof Sentry.mobileReplayIntegration === 'function'
-      ? [
-          Sentry.mobileReplayIntegration({
-            maskAllText: true,
-            maskAllImages: true,
-            maskAllVectors: true
-          })
-        ]
-      : undefined
+  const integrations: Integration[] = []
+
+  if (typeof Sentry.mobileReplayIntegration === 'function') {
+    integrations.push(
+      Sentry.mobileReplayIntegration({
+        maskAllText: true,
+        maskAllImages: true,
+        maskAllVectors: true
+      }) as unknown as Integration
+    )
+  }
+
+  if (navigationIntegration) {
+    integrations.push(navigationIntegration as unknown as Integration)
+  }
 
   Sentry.init({
     dsn: sentryDsn,
@@ -114,11 +133,36 @@ export function initializeSentry(): void {
     enableLogs: true,
     replaysSessionSampleRate: config.sentry.replaysSessionSampleRate,
     replaysOnErrorSampleRate: config.sentry.replaysOnErrorSampleRate,
-    ...(integrations ? { integrations } : {})
+    ...(sentryHasTracingEnabled ? { tracesSampleRate: sentryTracesSampleRate } : {}),
+    ...(integrations.length ? { integrations } : {})
   })
 
   sentryInitialized = true
   void sendStartupProbeOnce()
+}
+
+export function registerSentryNavigationContainer(ref: unknown): void {
+  if (!sentryHasTracingEnabled || !navigationIntegration) {
+    return
+  }
+
+  try {
+    navigationIntegration.registerNavigationContainer(ref)
+  } catch {
+    // Avoid breaking navigation if instrumentation wiring fails.
+  }
+}
+
+export function wrapSentryExpoRouter<T extends { prefetch?: (...args: any[]) => any }>(router: T): T {
+  if (!sentryHasTracingEnabled || typeof Sentry.wrapExpoRouter !== 'function') {
+    return router
+  }
+
+  try {
+    return Sentry.wrapExpoRouter(router as any) as T
+  } catch {
+    return router
+  }
 }
 
 export function setSentryUser(user: SentryUser | null): void {

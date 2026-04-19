@@ -107,7 +107,8 @@ describe('runtime config', () => {
           SENTRY_ENABLED: 'true',
           SENTRY_STARTUP_TEST_EVENT: 'true',
           SENTRY_REPLAYS_SESSION_SAMPLE_RATE: '1',
-          SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: '0.75'
+          SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: '0.75',
+          SENTRY_TRACES_SAMPLE_RATE: '0.25'
         }
       }
     })
@@ -118,7 +119,8 @@ describe('runtime config', () => {
       environment: 'prd',
       startupTestEvent: true,
       replaysSessionSampleRate: 1,
-      replaysOnErrorSampleRate: 0.75
+      replaysOnErrorSampleRate: 0.75,
+      tracesSampleRate: 0.25
     })
   })
 })
