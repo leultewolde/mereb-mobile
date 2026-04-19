@@ -116,7 +116,8 @@ describe('mobile stages', () => {
       SENTRY_ENABLED: 'false',
       SENTRY_STARTUP_TEST_EVENT: 'true',
       SENTRY_REPLAYS_SESSION_SAMPLE_RATE: '1',
-      SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: '0.5'
+      SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: '0.5',
+      SENTRY_TRACES_SAMPLE_RATE: '1'
     })
 
     expect(config.sentry).toMatchObject({
@@ -125,7 +126,8 @@ describe('mobile stages', () => {
       environment: 'prd',
       startupTestEvent: true,
       replaysSessionSampleRate: 1,
-      replaysOnErrorSampleRate: 0.5
+      replaysOnErrorSampleRate: 0.5,
+      tracesSampleRate: 1
     })
 
     expect(config.extra).toMatchObject({
@@ -133,7 +135,8 @@ describe('mobile stages', () => {
       SENTRY_ENABLED: 'false',
       SENTRY_STARTUP_TEST_EVENT: 'true',
       SENTRY_REPLAYS_SESSION_SAMPLE_RATE: '1',
-      SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: '0.5'
+      SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: '0.5',
+      SENTRY_TRACES_SAMPLE_RATE: '1'
     })
   })
 

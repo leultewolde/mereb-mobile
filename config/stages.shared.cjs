@@ -186,6 +186,10 @@ function resolveStageConfig(stage, environment = process.env) {
     environment.SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE,
       1
   )
+  const sentryTracesSampleRate = resolveNumber(
+    environment.SENTRY_TRACES_SAMPLE_RATE,
+    stage === 'prd' ? 0.2 : 0
+  )
 
   const keycloak = resolveKeycloak(stage, environment)
 
@@ -207,7 +211,8 @@ function resolveStageConfig(stage, environment = process.env) {
     SENTRY_ENABLED: sentryEnabled,
     SENTRY_STARTUP_TEST_EVENT: sentryStartupTestEvent,
     SENTRY_REPLAYS_SESSION_SAMPLE_RATE: String(sentryReplaysSessionSampleRate),
-    SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: String(sentryReplaysOnErrorSampleRate)
+    SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: String(sentryReplaysOnErrorSampleRate),
+    SENTRY_TRACES_SAMPLE_RATE: String(sentryTracesSampleRate)
   }
 
   return {
@@ -229,7 +234,8 @@ function resolveStageConfig(stage, environment = process.env) {
       environment: stage,
       startupTestEvent: sentryStartupTestEvent === 'true',
       replaysSessionSampleRate: sentryReplaysSessionSampleRate,
-      replaysOnErrorSampleRate: sentryReplaysOnErrorSampleRate
+      replaysOnErrorSampleRate: sentryReplaysOnErrorSampleRate,
+      tracesSampleRate: sentryTracesSampleRate
     },
     keycloak,
     easProjectId,

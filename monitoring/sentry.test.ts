@@ -9,6 +9,7 @@ type SentryTestConfig = {
   startupTestEvent: boolean
   replaysSessionSampleRate: number
   replaysOnErrorSampleRate: number
+  tracesSampleRate: number
 }
 
 async function loadSentryModule(options?: {
@@ -30,6 +31,7 @@ async function loadSentryModule(options?: {
     startupTestEvent: false,
     replaysSessionSampleRate: 0.1,
     replaysOnErrorSampleRate: 1,
+    tracesSampleRate: 0,
     ...options?.config
   }
 
@@ -65,6 +67,11 @@ async function loadSentryModule(options?: {
           name: 'mobileReplayIntegration',
           integrationOptions
         }))
+  const reactNavigationIntegration = vi.fn(() => ({
+    name: 'reactNavigationIntegration',
+    registerNavigationContainer: vi.fn()
+  }))
+  const wrapExpoRouter = vi.fn((router) => router)
 
   vi.doMock('@mobile/config', () => ({
     config: {
@@ -106,7 +113,9 @@ async function loadSentryModule(options?: {
     },
     wrap,
     withScope,
-    mobileReplayIntegration
+    mobileReplayIntegration,
+    reactNavigationIntegration,
+    wrapExpoRouter
   }))
 
   const module = (await import('./sentry')) as LoadedSentryModule
@@ -185,6 +194,22 @@ describe('mobile sentry monitoring', () => {
     expect(mocks.setTag).toHaveBeenCalledWith('stage', 'prd')
     expect(mocks.setExtra).toHaveBeenCalledWith('release', 'mereb-social@1.0.1')
     expect(mocks.flush).toHaveBeenCalled()
+  })
+
+  it('enables tracing only when a sample rate is configured', async () => {
+    const { module, mocks } = await loadSentryModule({
+      config: {
+        tracesSampleRate: 1
+      }
+    })
+
+    module.initializeSentry()
+
+    expect(mocks.init).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tracesSampleRate: 1
+      })
+    )
   })
 
   it('skips initialization and helper calls when Sentry is disabled', async () => {

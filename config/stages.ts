@@ -19,6 +19,7 @@ export type StageExtra = {
   SENTRY_STARTUP_TEST_EVENT: string
   SENTRY_REPLAYS_SESSION_SAMPLE_RATE: string
   SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: string
+  SENTRY_TRACES_SAMPLE_RATE: string
 }
 
 export type StageConfig = {
@@ -41,6 +42,7 @@ export type StageConfig = {
     startupTestEvent: boolean
     replaysSessionSampleRate: number
     replaysOnErrorSampleRate: number
+    tracesSampleRate: number
   }
   keycloak: {
     url: string

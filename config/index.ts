@@ -160,6 +160,10 @@ export const config: Omit<StageConfig, 'extra'> & { pushRegistrationEnabled: boo
     replaysOnErrorSampleRate: pickNumber(
       runtimeExtra.SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE,
       runtimeStageDefaults.sentry.replaysOnErrorSampleRate
+    ),
+    tracesSampleRate: pickNumber(
+      runtimeExtra.SENTRY_TRACES_SAMPLE_RATE,
+      runtimeStageDefaults.sentry.tracesSampleRate
     )
   },
   keycloak: {

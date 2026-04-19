@@ -1,11 +1,28 @@
-import { Stack } from 'expo-router'
+import { Stack, useNavigationContainerRef, useRouter } from 'expo-router'
+import { useEffect } from 'react'
 import { AppProviders } from '../providers/AppProviders'
 import { AuthGate } from '../components/AuthGate'
-import { initializeSentry, withSentryRoot } from '../monitoring/sentry'
+import {
+  initializeSentry,
+  registerSentryNavigationContainer,
+  wrapSentryExpoRouter,
+  withSentryRoot
+} from '../monitoring/sentry'
 
 initializeSentry()
 
 function RootLayout() {
+  const navigationRef = useNavigationContainerRef()
+  const router = useRouter()
+
+  useEffect(() => {
+    registerSentryNavigationContainer(navigationRef)
+  }, [navigationRef])
+
+  useEffect(() => {
+    wrapSentryExpoRouter(router)
+  }, [router])
+
   return (
     <AppProviders>
       <AuthGate>
