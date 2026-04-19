@@ -34,6 +34,7 @@ async function loadAppProvidersModule(options?: {
     clientId: string
   }>
   discoveryDocument?: {
+    authorizationEndpoint?: string
     tokenEndpoint?: string
   }
   authPromptResult?: {
@@ -118,6 +119,7 @@ async function loadAppProvidersModule(options?: {
   let authRequestOptions: Record<string, unknown> | undefined
 
   const fetchDiscoveryAsync = vi.fn(async () => ({
+    authorizationEndpoint: 'https://keycloak.example/auth',
     tokenEndpoint: 'https://keycloak.example/token',
     ...options?.discoveryDocument
   }))
@@ -902,6 +904,40 @@ describe('AppProviders', () => {
     unmount()
   })
 
+  it('treats a non-http keycloak url as incomplete config and skips interactive auth', async () => {
+    const warningSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const { module, mocks } = await loadAppProvidersModule({
+      keycloak: {
+        url: 'mereb://auth.example'
+      }
+    })
+    const { result, unmount } = renderAppProviders(module)
+
+    await waitForExpectation(() => {
+      expect(result.current.isReady).toBe(true)
+      expect(result.current.isAuthConfigured).toBe(false)
+      expect(result.current.missingConfigKeys).toContain('KEYCLOAK_URL_HTTP_REQUIRED')
+    })
+
+    await act(async () => {
+      await result.current.login()
+      await flushMicrotasks()
+    })
+
+    expect(mocks.fetchDiscoveryAsync).not.toHaveBeenCalled()
+    expect(mocks.authRequestInstance()).toBeUndefined()
+    expect(mocks.logSentryWarn).toHaveBeenCalledWith(
+      'Interactive auth attempted with incomplete Keycloak config',
+      expect.objectContaining({
+        missing_config_keys: expect.stringContaining('KEYCLOAK_URL_HTTP_REQUIRED')
+      })
+    )
+    expect(warningSpy).toHaveBeenCalledWith('Keycloak configuration is incomplete.')
+
+    warningSpy.mockRestore()
+    unmount()
+  })
+
   it('captures interactive auth failures and preserves the logged-out state', async () => {
     const warningSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const { module, mocks } = await loadAppProvidersModule({
@@ -928,7 +964,7 @@ describe('AppProviders', () => {
 
     expect(result.current.isAuthenticated).toBe(false)
     expect(mocks.captureSentryException).toHaveBeenCalled()
-    expect(warningSpy).toHaveBeenCalledWith('Token exchange failed', expect.any(Error))
+    expect(warningSpy).toHaveBeenCalledWith('Interactive auth failed', expect.any(Error))
     expect(mocks.countSentryMetric).toHaveBeenCalledWith(
       'auth_interactive_failure',
       1,

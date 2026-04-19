@@ -222,7 +222,13 @@ function patchApolloCacheDiff(cache: InMemoryCache) {
 }
 
 function buildIssuerUrl() {
-  return `${config.keycloak.url.replace(/\/$/, '')}/realms/${config.keycloak.realm}`
+  const baseUrl = config.keycloak.url.trim()
+  const realm = config.keycloak.realm.trim()
+  if (!isHttpUrl(baseUrl) || !realm) {
+    return undefined
+  }
+
+  return `${baseUrl.replace(/\/$/, '')}/realms/${realm}`
 }
 
 function buildRedirectUri() {
@@ -230,6 +236,19 @@ function buildRedirectUri() {
     scheme: config.appScheme,
     path: 'oauth2redirect/keycloak'
   })
+}
+
+function isHttpUrl(url: string | undefined): boolean {
+  if (!url) {
+    return false
+  }
+
+  try {
+    const parsed = new URL(url)
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:'
+  } catch {
+    return false
+  }
 }
 
 function buildTokenExchangeError(
@@ -365,8 +384,11 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
   const [ready, setReady] = useState(false)
   const missingConfigKeys = useMemo(() => {
     const keys: string[] = []
-    if (!config.keycloak.url.trim()) {
+    const keycloakUrl = config.keycloak.url.trim()
+    if (!keycloakUrl) {
       keys.push('KEYCLOAK_URL')
+    } else if (!isHttpUrl(keycloakUrl)) {
+      keys.push('KEYCLOAK_URL_HTTP_REQUIRED')
     }
     if (!config.keycloak.realm.trim()) {
       keys.push('KC_REALM')
@@ -427,7 +449,12 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       })
 
       try {
-        const discovery = await AuthSession.fetchDiscoveryAsync(buildIssuerUrl())
+        const issuerUrl = buildIssuerUrl()
+        if (!issuerUrl) {
+          throw new Error('Keycloak issuer URL missing or invalid for refresh token exchange')
+        }
+
+        const discovery = await AuthSession.fetchDiscoveryAsync(issuerUrl)
         const payload = await exchangeTokens(
           discovery,
           {
@@ -790,31 +817,42 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
     async (extraParams?: Record<string, string>) => {
       const authStartedAt = Date.now()
       const { clientId } = config.keycloak
-      if (!clientId) {
+      if (!clientId || !isAuthConfigured) {
         logSentryWarn('Interactive auth attempted with incomplete Keycloak config', {
-          missing_client_id: true
+          missing_client_id: !clientId,
+          missing_config_keys: missingConfigKeys.join(','),
+          missing_config_keys_count: missingConfigKeys.length
         })
         console.warn('Keycloak configuration is incomplete.')
         return
       }
 
-      const discovery = await AuthSession.fetchDiscoveryAsync(buildIssuerUrl())
-      const redirectUri = buildRedirectUri()
-
-      const authRequest = new AuthSession.AuthRequest({
-        clientId,
-        redirectUri,
-        responseType: AuthSession.ResponseType.Code,
-        usePKCE: true,
-        extraParams
-      })
-
-      const result = await authRequest.promptAsync(discovery)
-      if (result.type !== 'success' || !result.params.code) {
-        return
-      }
-
       try {
+        const issuerUrl = buildIssuerUrl()
+        if (!issuerUrl) {
+          throw new Error('Keycloak issuer URL missing or invalid for interactive auth')
+        }
+
+        const discovery = await AuthSession.fetchDiscoveryAsync(issuerUrl)
+        if (!isHttpUrl(discovery.authorizationEndpoint)) {
+          throw new Error('Keycloak authorization endpoint missing or invalid for interactive auth')
+        }
+
+        const redirectUri = buildRedirectUri()
+
+        const authRequest = new AuthSession.AuthRequest({
+          clientId,
+          redirectUri,
+          responseType: AuthSession.ResponseType.Code,
+          usePKCE: true,
+          extraParams
+        })
+
+        const result = await authRequest.promptAsync(discovery)
+        if (result.type !== 'success' || !result.params.code) {
+          return
+        }
+
         const payload = await exchangeTokens(
           discovery,
           {
@@ -869,7 +907,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
             : undefined
         })
       } catch (error) {
-        console.warn('Token exchange failed', error)
+        console.warn('Interactive auth failed', error)
         countSentryMetric('auth_interactive_failure', 1, {
           unit: 'attempt',
           attributes: {
@@ -883,7 +921,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         captureSentryException(error)
       }
     },
-    [setCurrentToken]
+    [isAuthConfigured, missingConfigKeys, setCurrentToken]
   )
 
   const login = useCallback(async () => {
