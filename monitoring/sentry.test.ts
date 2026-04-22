@@ -21,6 +21,8 @@ async function loadSentryModule(options?: {
   }
   getItemError?: Error
   withReplayIntegration?: boolean
+  withFeedbackIntegration?: boolean
+  withFeedbackApi?: boolean
 }) {
   vi.resetModules()
 
@@ -67,6 +69,19 @@ async function loadSentryModule(options?: {
           name: 'mobileReplayIntegration',
           integrationOptions
         }))
+  const feedbackIntegration =
+    options?.withFeedbackIntegration === false
+      ? undefined
+      : vi.fn((integrationOptions: Record<string, unknown>) => ({
+          name: 'feedbackIntegration',
+          integrationOptions
+        }))
+  const showFeedbackWidget =
+    options?.withFeedbackApi === false ? undefined : vi.fn()
+  const showFeedbackButton =
+    options?.withFeedbackApi === false ? undefined : vi.fn()
+  const hideFeedbackButton =
+    options?.withFeedbackApi === false ? undefined : vi.fn()
   const reactNavigationIntegration = vi.fn(() => ({
     name: 'reactNavigationIntegration',
     registerNavigationContainer: vi.fn()
@@ -114,6 +129,10 @@ async function loadSentryModule(options?: {
     wrap,
     withScope,
     mobileReplayIntegration,
+    feedbackIntegration,
+    showFeedbackWidget,
+    showFeedbackButton,
+    hideFeedbackButton,
     reactNavigationIntegration,
     wrapExpoRouter
   }))
@@ -135,10 +154,14 @@ async function loadSentryModule(options?: {
       metricDistribution,
       metricGauge,
       mobileReplayIntegration,
+      feedbackIntegration,
+      hideFeedbackButton,
       setExtra,
       setItem,
       setTag,
       setUser,
+      showFeedbackButton,
+      showFeedbackWidget,
       withScope,
       wrap
     }
@@ -171,6 +194,14 @@ describe('mobile sentry monitoring', () => {
       maskAllImages: true,
       maskAllVectors: true
     })
+    expect(mocks.feedbackIntegration).toHaveBeenCalledWith({
+      styles: {
+        submitButton: {
+          backgroundColor: '#6a1b9a'
+        }
+      },
+      namePlaceholder: 'Fullname'
+    })
     expect(mocks.init).toHaveBeenCalledWith(
       expect.objectContaining({
         dsn: 'https://examplePublicKey@o0.ingest.sentry.io/1',
@@ -178,7 +209,15 @@ describe('mobile sentry monitoring', () => {
         environment: 'prd',
         release: 'mereb-social@1.0.1',
         replaysSessionSampleRate: 1,
-        replaysOnErrorSampleRate: 0.5
+        replaysOnErrorSampleRate: 0.5,
+        integrations: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'mobileReplayIntegration'
+          }),
+          expect.objectContaining({
+            name: 'feedbackIntegration'
+          })
+        ])
       })
     )
 
@@ -230,10 +269,16 @@ describe('mobile sentry monitoring', () => {
     module.captureSentryException(new Error('noop'))
 
     expect(module.withSentryRoot(RootComponent)).toBe(RootComponent)
+    expect(module.showSentryFeedbackWidget()).toBe(false)
+    expect(module.showSentryFeedbackButton()).toBe(false)
+    expect(module.hideSentryFeedbackButton()).toBe(false)
     expect(mocks.init).not.toHaveBeenCalled()
     expect(mocks.setUser).not.toHaveBeenCalled()
     expect(mocks.addBreadcrumb).not.toHaveBeenCalled()
     expect(mocks.captureException).not.toHaveBeenCalled()
+    expect(mocks.showFeedbackWidget).not.toHaveBeenCalled()
+    expect(mocks.showFeedbackButton).not.toHaveBeenCalled()
+    expect(mocks.hideFeedbackButton).not.toHaveBeenCalled()
     expect(mocks.wrap).not.toHaveBeenCalled()
   })
 
@@ -262,6 +307,7 @@ describe('mobile sentry monitoring', () => {
 
     const RootComponent = () => null
 
+    module.initializeSentry()
     module.setSentryUser({
       id: 'user-1',
       username: 'mereb',
@@ -296,6 +342,9 @@ describe('mobile sentry monitoring', () => {
     module.distributionSentryMetric('response_time', 187.5, {
       unit: 'millisecond'
     })
+    expect(module.showSentryFeedbackWidget()).toBe(true)
+    expect(module.showSentryFeedbackButton()).toBe(true)
+    expect(module.hideSentryFeedbackButton()).toBe(true)
 
     expect(module.withSentryRoot(RootComponent)).toBe(RootComponent)
     expect(mocks.setUser).toHaveBeenNthCalledWith(1, {
@@ -334,6 +383,9 @@ describe('mobile sentry monitoring', () => {
       187.5,
       { unit: 'millisecond' }
     )
+    expect(mocks.showFeedbackWidget).toHaveBeenCalled()
+    expect(mocks.showFeedbackButton).toHaveBeenCalled()
+    expect(mocks.hideFeedbackButton).toHaveBeenCalled()
     expect(mocks.wrap).toHaveBeenCalledWith(RootComponent)
   })
 
@@ -346,7 +398,8 @@ describe('mobile sentry monitoring', () => {
         slug: '',
         version: ''
       },
-      withReplayIntegration: false
+      withReplayIntegration: false,
+      withFeedbackIntegration: false
     })
 
     module.initializeSentry()
@@ -363,6 +416,21 @@ describe('mobile sentry monitoring', () => {
     )
     expect(mocks.getItem).not.toHaveBeenCalled()
     expect(mocks.captureException).not.toHaveBeenCalled()
+  })
+
+  it('returns false from feedback helpers when feedback APIs are unavailable', async () => {
+    const { module, mocks } = await loadSentryModule({
+      withFeedbackApi: false
+    })
+
+    module.initializeSentry()
+
+    expect(module.showSentryFeedbackWidget()).toBe(false)
+    expect(module.showSentryFeedbackButton()).toBe(false)
+    expect(module.hideSentryFeedbackButton()).toBe(false)
+    expect(mocks.showFeedbackWidget).toBeUndefined()
+    expect(mocks.showFeedbackButton).toBeUndefined()
+    expect(mocks.hideFeedbackButton).toBeUndefined()
   })
 
   it('swallows startup probe storage errors after initialization', async () => {

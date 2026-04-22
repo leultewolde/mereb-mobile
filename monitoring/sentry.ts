@@ -119,6 +119,19 @@ export function initializeSentry(): void {
     )
   }
 
+  if (typeof Sentry.feedbackIntegration === 'function') {
+    integrations.push(
+      Sentry.feedbackIntegration({
+        styles: {
+          submitButton: {
+            backgroundColor: '#6a1b9a'
+          }
+        },
+        namePlaceholder: 'Fullname'
+      }) as unknown as Integration
+    )
+  }
+
   if (navigationIntegration) {
     integrations.push(navigationIntegration as unknown as Integration)
   }
@@ -329,4 +342,55 @@ export function withSentryRoot<T extends ComponentType<any>>(RootComponent: T): 
   }
 
   return Sentry.wrap(RootComponent) as T
+}
+
+export function showSentryFeedbackWidget(): boolean {
+  if (
+    !sentryEnabled ||
+    !sentryInitialized ||
+    typeof Sentry.showFeedbackWidget !== 'function'
+  ) {
+    return false
+  }
+
+  try {
+    Sentry.showFeedbackWidget()
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function showSentryFeedbackButton(): boolean {
+  if (
+    !sentryEnabled ||
+    !sentryInitialized ||
+    typeof Sentry.showFeedbackButton !== 'function'
+  ) {
+    return false
+  }
+
+  try {
+    Sentry.showFeedbackButton()
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function hideSentryFeedbackButton(): boolean {
+  if (
+    !sentryEnabled ||
+    !sentryInitialized ||
+    typeof Sentry.hideFeedbackButton !== 'function'
+  ) {
+    return false
+  }
+
+  try {
+    Sentry.hideFeedbackButton()
+    return true
+  } catch {
+    return false
+  }
 }

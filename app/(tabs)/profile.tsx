@@ -2,7 +2,7 @@ import { ProfileScreen } from '@mereb/app-profile/native';
 import { useRouter } from 'expo-router';
 import { Linking } from 'react-native';
 import { config } from '@mobile/config';
-import { logSentryWarn } from '../../monitoring/sentry';
+import { logSentryWarn, showSentryFeedbackWidget } from '../../monitoring/sentry';
 import { useAuth } from '../../providers/AppProviders';
 
 export default function ProfileTabScreen() {
@@ -43,7 +43,11 @@ export default function ProfileTabScreen() {
         router.push(`/messages/new?${params.toString()}`);
       }}
       onOpenPrivacyPolicy={() => openExternalUrl(config.privacyUrl)}
-      onOpenSupport={() => openExternalUrl(config.supportUrl)}
+      onOpenSupport={() => {
+        if (!showSentryFeedbackWidget()) {
+          openExternalUrl(config.supportUrl);
+        }
+      }}
     />
   );
 }
