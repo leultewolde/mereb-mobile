@@ -97,6 +97,16 @@ type TokenExchangeError = Error & {
 
 type ApolloCacheDiffOptions = Parameters<InMemoryCache['diff']>[0]
 
+function resolveFetchHeaders(headers: HeadersInit | undefined): Record<string, string> {
+  if (headers instanceof Headers) {
+    return Object.fromEntries(headers.entries())
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers)
+  }
+  return { ...(headers ?? {}) }
+}
+
 function decodeBase64Url(segment: string): string {
   let output = segment.replaceAll('-', '+').replaceAll('_', '/')
   const pad = output.length % 4
@@ -621,9 +631,10 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
   const graphqlFetch = useCallback(
     async (uri: RequestInfo | URL, options: RequestInit = {}) => {
       const requestToken = await resolveRequestToken()
-      const initialHeaders = {
-        ...options.headers,
-        ...(requestToken ? { Authorization: `Bearer ${requestToken}` } : {})
+      const initialHeaders = resolveFetchHeaders(options.headers)
+
+      if (requestToken) {
+        initialHeaders.Authorization = `Bearer ${requestToken}`
       }
 
       const response = await fetch(uri, {
@@ -658,7 +669,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       return fetch(uri, {
         ...options,
         headers: {
-          ...options.headers,
+          ...resolveFetchHeaders(options.headers),
           Authorization: `Bearer ${refreshedToken}`
         }
       })
@@ -719,7 +730,11 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       return new ApolloClient({
         link: new HttpLink({
           uri: config.graphqlUrl,
-          fetch: graphqlFetch
+          fetch: graphqlFetch,
+          headers: {
+            'apollographql-client-name': 'mereb-mobile',
+            'apollographql-client-version': config.appVersion ?? 'unknown'
+          }
         }),
         cache
       })
