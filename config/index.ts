@@ -133,8 +133,12 @@ const runtimeExtraKeycloakUrl = stage === 'local'
 export type { MobileStage, StageConfig, StageExtra } from './stages'
 export { resolveMobileStage, resolveStageConfig } from './stages'
 
-export const config: Omit<StageConfig, 'extra'> & { pushRegistrationEnabled: boolean } = {
+export const config: Omit<StageConfig, 'extra'> & {
+  pushRegistrationEnabled: boolean
+  appVersion: string
+} = {
   ...runtimeStageDefaults,
+  appVersion: trim(Constants.expoConfig?.version) ?? 'unknown',
   graphqlUrl: pick(runtimeExtraGraphqlUrl, runtimeStageDefaults.graphqlUrl),
   flagsUrl: pick(runtimeExtraFlagsUrl, runtimeStageDefaults.flagsUrl),
   inviteRedeemUrl: pick(runtimeExtraInviteRedeemUrl, runtimeStageDefaults.inviteRedeemUrl),

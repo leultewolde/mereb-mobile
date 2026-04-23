@@ -27,6 +27,7 @@ function getNativeTestState() {
 async function loadAppProvidersModule(options?: {
   accessToken?: string
   refreshToken?: string
+  secureStoreGetItemError?: Error
   fetchResponses?: ReturnType<typeof createJsonResponse>[]
   keycloak?: Partial<{
     url: string
@@ -58,7 +59,13 @@ async function loadAppProvidersModule(options?: {
     secureStore.set('refresh_token', options.refreshToken)
   }
 
-  const getItemAsync = vi.fn(async (key: string) => secureStore.get(key) ?? null)
+  const getItemAsync = vi.fn(async (key: string) => {
+    if (options?.secureStoreGetItemError) {
+      throw options.secureStoreGetItemError
+    }
+
+    return secureStore.get(key) ?? null
+  })
   const setItemAsync = vi.fn(async (key: string, value: string) => {
     secureStore.set(key, value)
   })
@@ -192,6 +199,7 @@ async function loadAppProvidersModule(options?: {
   }))
 
   vi.doMock('expo-secure-store', () => ({
+    AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 2,
     getItemAsync,
     setItemAsync,
     deleteItemAsync
@@ -387,6 +395,41 @@ describe('AppProviders', () => {
     unmount()
   })
 
+  it('treats secure-store interaction errors as missing tokens during bootstrap', async () => {
+    const { module, mocks } = await loadAppProvidersModule({
+      secureStoreGetItemError: new Error(
+        "Calling the 'getValueWithKeyAsync' function has failed\n-> Caused by: User interaction is not allowed."
+      )
+    })
+    const { result, unmount } = renderAppProviders(module)
+
+    await waitForExpectation(() => {
+      expect(result.current.isReady).toBe(true)
+      expect(result.current.isAuthenticated).toBe(false)
+    })
+
+    expect(mocks.logSentryWarn).toHaveBeenCalledWith(
+      'Secure store read blocked by keychain interaction policy',
+      expect.objectContaining({
+        error_message: expect.stringContaining('User interaction is not allowed.')
+      })
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'auth_secure_store_read_blocked',
+      1,
+      expect.objectContaining({
+        unit: 'attempt'
+      })
+    )
+    expect(
+      mocks.countSentryMetric.mock.calls.some(
+        (call) => call[0] === 'apollo_bootstrap_failure'
+      )
+    ).toBe(false)
+
+    unmount()
+  })
+
   it('refreshes an expiring bootstrap session with the stored refresh token', async () => {
     const expiringToken = createJwt({
       sub: 'user-1',
@@ -419,8 +462,20 @@ describe('AppProviders', () => {
         method: 'POST'
       })
     )
-    expect(mocks.setItemAsync).toHaveBeenCalledWith('access_token', refreshedToken)
-    expect(mocks.setItemAsync).toHaveBeenCalledWith('refresh_token', 'refresh-token-2')
+    expect(mocks.setItemAsync).toHaveBeenCalledWith(
+      'access_token',
+      refreshedToken,
+      expect.objectContaining({
+        keychainAccessible: expect.any(Number)
+      })
+    )
+    expect(mocks.setItemAsync).toHaveBeenCalledWith(
+      'refresh_token',
+      'refresh-token-2',
+      expect.objectContaining({
+        keychainAccessible: expect.any(Number)
+      })
+    )
     expect(mocks.countSentryMetric).toHaveBeenCalledWith(
       'auth_refresh_attempt',
       1,
@@ -578,6 +633,61 @@ describe('AppProviders', () => {
     unmount()
   })
 
+  it('retries GraphQL requests when the API reports that the token is not active', async () => {
+    const accessToken = createJwt({
+      sub: 'user-1',
+      exp: Math.floor(Date.now() / 1000) + 3600
+    })
+    const refreshedToken = createJwt({
+      sub: 'user-1',
+      exp: Math.floor(Date.now() / 1000) + 7200
+    })
+    const graphqlErrorResponse = createJsonResponse({
+      errors: [{ message: 'Token is not active' }]
+    })
+    const successfulResponse = createJsonResponse({
+      data: {
+        conversations: []
+      }
+    })
+    const { module, mocks } = await loadAppProvidersModule({
+      accessToken,
+      refreshToken: 'refresh-token-1',
+      fetchResponses: [
+        graphqlErrorResponse,
+        createJsonResponse({
+          access_token: refreshedToken,
+          refresh_token: 'refresh-token-1'
+        }),
+        successfulResponse
+      ]
+    })
+    const { unmount } = renderAppProviders(module)
+
+    await waitForExpectation(() => {
+      expect(mocks.graphqlFetch()).toBeTypeOf('function')
+    })
+
+    let response: Response | undefined
+    await act(async () => {
+      response = await mocks.graphqlFetch()?.('https://api.mereb.app/graphql')
+      await flushMicrotasks()
+    })
+
+    expect(response).toBe(successfulResponse)
+    expect(mocks.fetchMock).toHaveBeenNthCalledWith(
+      3,
+      'https://api.mereb.app/graphql',
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: `Bearer ${refreshedToken}`
+        })
+      })
+    )
+
+    unmount()
+  })
+
   it('handles interactive login, registration, and logout', async () => {
     const loginToken = createJwt({
       sub: 'user-1',
@@ -618,7 +728,13 @@ describe('AppProviders', () => {
       usePKCE: true
     })
     expect(mocks.authRequestInstance()?.promptAsync).toHaveBeenCalled()
-    expect(mocks.setItemAsync).toHaveBeenCalledWith('access_token', loginToken)
+    expect(mocks.setItemAsync).toHaveBeenCalledWith(
+      'access_token',
+      loginToken,
+      expect.objectContaining({
+        keychainAccessible: expect.any(Number)
+      })
+    )
     expect(mocks.logSentryInfo).toHaveBeenCalledWith(
       'Interactive auth flow completed',
       expect.objectContaining({
@@ -647,7 +763,13 @@ describe('AppProviders', () => {
         kc_action: 'register'
       }
     })
-    expect(mocks.setItemAsync).toHaveBeenCalledWith('access_token', registerToken)
+    expect(mocks.setItemAsync).toHaveBeenCalledWith(
+      'access_token',
+      registerToken,
+      expect.objectContaining({
+        keychainAccessible: expect.any(Number)
+      })
+    )
     expect(mocks.logSentryInfo).toHaveBeenCalledWith(
       'Interactive auth flow completed',
       expect.objectContaining({
@@ -726,6 +848,9 @@ describe('AppProviders', () => {
       )
     })
 
+    expect(mocks.apolloClient.resetStore).not.toHaveBeenCalled()
+    expect(mocks.apolloClient.clearStore).not.toHaveBeenCalled()
+
     unmount()
   })
 
@@ -757,6 +882,87 @@ describe('AppProviders', () => {
     expect(mocks.captureSentryException).toHaveBeenCalled()
     expect(mocks.deleteItemAsync).toHaveBeenCalledWith('access_token')
     expect(mocks.deleteItemAsync).toHaveBeenCalledWith('refresh_token')
+
+    unmount()
+  })
+
+  it('clears the stored session when refresh reports that the token is not active', async () => {
+    const expiredToken = createJwt({
+      sub: 'user-1',
+      exp: Math.floor(Date.now() / 1000) - 60
+    })
+    const { module, mocks } = await loadAppProvidersModule({
+      accessToken: expiredToken,
+      refreshToken: 'refresh-token-1',
+      fetchResponses: [
+        createJsonResponse(
+          {
+            error: 'invalid_token',
+            error_description: 'Token is not active'
+          },
+          { status: 400 }
+        )
+      ]
+    })
+    const { result, unmount } = renderAppProviders(module)
+
+    await waitForExpectation(() => {
+      expect(result.current.isReady).toBe(true)
+      expect(result.current.isAuthenticated).toBe(false)
+    })
+
+    expect(mocks.captureSentryException).toHaveBeenCalled()
+    expect(mocks.deleteItemAsync).toHaveBeenCalledWith('access_token')
+    expect(mocks.deleteItemAsync).toHaveBeenCalledWith('refresh_token')
+    expect(mocks.logSentryWarn).toHaveBeenCalledWith(
+      'Auth refresh token rejected',
+      expect.objectContaining({
+        reason: 'bootstrap'
+      })
+    )
+
+    unmount()
+  })
+
+  it('downgrades in-flight Apollo store reset errors to info on auth transitions', async () => {
+    const loginToken = createJwt({
+      sub: 'user-1',
+      exp: Math.floor(Date.now() / 1000) + 3600
+    })
+    const { module, mocks } = await loadAppProvidersModule({
+      apolloResetStoreError: new Error(
+        'Store reset while query was in flight (not completed in link chain)'
+      ),
+      fetchResponses: [
+        createJsonResponse({
+          access_token: loginToken,
+          refresh_token: 'refresh-login'
+        })
+      ]
+    })
+    const { result, unmount } = renderAppProviders(module)
+
+    await waitForExpectation(() => {
+      expect(result.current.isReady).toBe(true)
+    })
+
+    await act(async () => {
+      await result.current.login()
+      await flushMicrotasks(10)
+    })
+
+    await waitForExpectation(() => {
+      expect(mocks.logSentryInfo).toHaveBeenCalledWith(
+        'Skipped Apollo cache sync while query was in flight',
+        expect.objectContaining({
+          is_authenticated: true
+        })
+      )
+    })
+    expect(mocks.logSentryWarn).not.toHaveBeenCalledWith(
+      'Apollo cache synchronization failed after auth change',
+      expect.anything()
+    )
 
     unmount()
   })

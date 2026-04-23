@@ -36,6 +36,10 @@ import {
   NotificationsProvider,
   type NotificationControlsHandle
 } from './Notifications'
+import {
+  getSecureStoreItemSafe,
+  setSecureStoreToken
+} from './secureStore'
 
 type AdminAccessLevel = 'full' | 'limited' | 'none'
 
@@ -96,6 +100,16 @@ type TokenExchangeError = Error & {
 }
 
 type ApolloCacheDiffOptions = Parameters<InMemoryCache['diff']>[0]
+
+function resolveFetchHeaders(headers: HeadersInit | undefined): Record<string, string> {
+  if (headers instanceof Headers) {
+    return Object.fromEntries(headers.entries())
+  }
+  if (Array.isArray(headers)) {
+    return Object.fromEntries(headers)
+  }
+  return { ...(headers ?? {}) }
+}
 
 function decodeBase64Url(segment: string): string {
   let output = segment.replaceAll('-', '+').replaceAll('_', '/')
@@ -278,6 +292,30 @@ function extractErrorMessage(error: unknown): string {
   return ''
 }
 
+async function getStoredToken(
+  key: string,
+  context: 'bootstrap' | 'refresh'
+): Promise<string | null> {
+  return getSecureStoreItemSafe(key, (error) => {
+    countSentryMetric('auth_secure_store_read_blocked', 1, {
+      unit: 'attempt',
+      attributes: {
+        storage_key: key,
+        context
+      }
+    })
+    logSentryWarn('Secure store read blocked by keychain interaction policy', {
+      storage_key: key,
+      context,
+      error_message: error instanceof Error ? error.message : String(error)
+    })
+  })
+}
+
+async function setStoredToken(key: string, value: string): Promise<void> {
+  await setSecureStoreToken(key, value)
+}
+
 function isInvalidGrantError(error: unknown): boolean {
   const message = extractErrorMessage(error)
 
@@ -287,7 +325,8 @@ function isInvalidGrantError(error: unknown): boolean {
       'code' in error &&
       (error as { code?: string }).code === 'invalid_grant') ||
     message === 'invalid refresh token' ||
-    message.includes('invalid_grant')
+    message.includes('invalid_grant') ||
+    message.includes('token is not active')
   )
 }
 
@@ -301,8 +340,17 @@ function isAuthenticationErrorMessage(message?: string): boolean {
     normalized.includes('authentication required') ||
     normalized.includes('authorization required') ||
     normalized.includes('invalid token') ||
+    normalized.includes('token is not active') ||
     normalized.includes('jwt') ||
     normalized.includes('token expired')
+  )
+}
+
+function isApolloStoreResetInFlightError(error: unknown): boolean {
+  const message = extractErrorMessage(error)
+  return (
+    message.includes('store reset while query was in flight') ||
+    message.includes('not completed in link chain')
   )
 }
 
@@ -375,13 +423,20 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
   const [token, setToken] = useState<string>()
   const tokenRef = useRef<string | undefined>(undefined)
   tokenRef.current = token
-  const lastAuthTokenRef = useRef<string | undefined>(undefined)
+  const lastAuthScopeRef = useRef<string | null | undefined>(undefined)
   const notificationControlsRef = useRef<NotificationControlsHandle | null>(null)
   const refreshPromiseRef = useRef<Promise<string | undefined> | null>(null)
 
   const [profile, setProfile] = useState<AuthProfile>()
   const [apolloClient, setApolloClient] = useState<ApolloClient>()
   const [ready, setReady] = useState(false)
+  const authScope = useMemo(() => {
+    if (!token) {
+      return null
+    }
+
+    return parseJwt(token)?.sub ?? '__authenticated__'
+  }, [token])
   const missingConfigKeys = useMemo(() => {
     const keys: string[] = []
     const keycloakUrl = config.keycloak.url.trim()
@@ -430,7 +485,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         return currentToken
       }
 
-      const storedRefresh = await SecureStore.getItemAsync(REFRESH_TOKEN_STORAGE_KEY)
+      const storedRefresh = await getStoredToken(REFRESH_TOKEN_STORAGE_KEY, 'refresh')
       if (!storedRefresh) {
         if (!isAccessTokenUsable(currentToken)) {
           setCurrentToken(undefined)
@@ -466,7 +521,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         )
 
         if (payload.access_token) {
-          await SecureStore.setItemAsync(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
+          await setStoredToken(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
           setCurrentToken(payload.access_token)
         } else {
           await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY)
@@ -474,7 +529,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         }
 
         if (payload.refresh_token) {
-          await SecureStore.setItemAsync(REFRESH_TOKEN_STORAGE_KEY, payload.refresh_token)
+          await setStoredToken(REFRESH_TOKEN_STORAGE_KEY, payload.refresh_token)
         }
 
         addSentryBreadcrumb({
@@ -621,9 +676,10 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
   const graphqlFetch = useCallback(
     async (uri: RequestInfo | URL, options: RequestInit = {}) => {
       const requestToken = await resolveRequestToken()
-      const initialHeaders = {
-        ...options.headers,
-        ...(requestToken ? { Authorization: `Bearer ${requestToken}` } : {})
+      const initialHeaders = resolveFetchHeaders(options.headers)
+
+      if (requestToken) {
+        initialHeaders.Authorization = `Bearer ${requestToken}`
       }
 
       const response = await fetch(uri, {
@@ -658,7 +714,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       return fetch(uri, {
         ...options,
         headers: {
-          ...options.headers,
+          ...resolveFetchHeaders(options.headers),
           Authorization: `Bearer ${refreshedToken}`
         }
       })
@@ -683,26 +739,34 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
   }, [profile])
 
   useEffect(() => {
-    if (!apolloClient) {
+    if (!apolloClient || !ready) {
       return
     }
 
-    const previousToken = lastAuthTokenRef.current
-    lastAuthTokenRef.current = token
+    const previousScope = lastAuthScopeRef.current
+    lastAuthScopeRef.current = authScope
 
-    if (previousToken === token || (previousToken === undefined && token === undefined)) {
+    if (previousScope === undefined || previousScope === authScope) {
       return
     }
 
-    const syncStore = token ? apolloClient.resetStore() : apolloClient.clearStore()
+    const syncStore = authScope ? apolloClient.resetStore() : apolloClient.clearStore()
     void syncStore.catch((error) => {
+      if (isApolloStoreResetInFlightError(error)) {
+        logSentryInfo('Skipped Apollo cache sync while query was in flight', {
+          is_authenticated: Boolean(authScope),
+          error_message: error instanceof Error ? error.message : String(error)
+        })
+        return
+      }
+
       console.warn('Failed to synchronize Apollo cache after auth change', error)
       logSentryWarn('Apollo cache synchronization failed after auth change', {
-        is_authenticated: Boolean(token),
+        is_authenticated: Boolean(authScope),
         error_message: error instanceof Error ? error.message : String(error)
       })
     })
-  }, [apolloClient, token])
+  }, [apolloClient, authScope, ready])
 
   useEffect(() => {
     let cancelled = false
@@ -719,14 +783,18 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
       return new ApolloClient({
         link: new HttpLink({
           uri: config.graphqlUrl,
-          fetch: graphqlFetch
+          fetch: graphqlFetch,
+          headers: {
+            'apollographql-client-name': 'mereb-mobile',
+            'apollographql-client-version': config.appVersion ?? 'unknown'
+          }
         }),
         cache
       })
     }
 
     const hydrateSession = async () => {
-      const storedAccess = await SecureStore.getItemAsync(ACCESS_TOKEN_STORAGE_KEY)
+      const storedAccess = await getStoredToken(ACCESS_TOKEN_STORAGE_KEY, 'bootstrap')
       if (cancelled) {
         return
       }
@@ -866,7 +934,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         )
 
         if (payload.access_token) {
-          await SecureStore.setItemAsync(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
+          await setStoredToken(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
           setCurrentToken(payload.access_token)
         } else {
           await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY)
@@ -874,7 +942,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         }
 
         if (payload.refresh_token) {
-          await SecureStore.setItemAsync(REFRESH_TOKEN_STORAGE_KEY, payload.refresh_token)
+          await setStoredToken(REFRESH_TOKEN_STORAGE_KEY, payload.refresh_token)
         } else {
           await SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY)
         }
