@@ -325,7 +325,8 @@ function isInvalidGrantError(error: unknown): boolean {
       'code' in error &&
       (error as { code?: string }).code === 'invalid_grant') ||
     message === 'invalid refresh token' ||
-    message.includes('invalid_grant')
+    message.includes('invalid_grant') ||
+    message.includes('token is not active')
   )
 }
 
@@ -339,8 +340,17 @@ function isAuthenticationErrorMessage(message?: string): boolean {
     normalized.includes('authentication required') ||
     normalized.includes('authorization required') ||
     normalized.includes('invalid token') ||
+    normalized.includes('token is not active') ||
     normalized.includes('jwt') ||
     normalized.includes('token expired')
+  )
+}
+
+function isApolloStoreResetInFlightError(error: unknown): boolean {
+  const message = extractErrorMessage(error)
+  return (
+    message.includes('store reset while query was in flight') ||
+    message.includes('not completed in link chain')
   )
 }
 
@@ -413,13 +423,20 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
   const [token, setToken] = useState<string>()
   const tokenRef = useRef<string | undefined>(undefined)
   tokenRef.current = token
-  const lastAuthTokenRef = useRef<string | undefined>(undefined)
+  const lastAuthScopeRef = useRef<string | null | undefined>(undefined)
   const notificationControlsRef = useRef<NotificationControlsHandle | null>(null)
   const refreshPromiseRef = useRef<Promise<string | undefined> | null>(null)
 
   const [profile, setProfile] = useState<AuthProfile>()
   const [apolloClient, setApolloClient] = useState<ApolloClient>()
   const [ready, setReady] = useState(false)
+  const authScope = useMemo(() => {
+    if (!token) {
+      return null
+    }
+
+    return parseJwt(token)?.sub ?? '__authenticated__'
+  }, [token])
   const missingConfigKeys = useMemo(() => {
     const keys: string[] = []
     const keycloakUrl = config.keycloak.url.trim()
@@ -722,26 +739,34 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
   }, [profile])
 
   useEffect(() => {
-    if (!apolloClient) {
+    if (!apolloClient || !ready) {
       return
     }
 
-    const previousToken = lastAuthTokenRef.current
-    lastAuthTokenRef.current = token
+    const previousScope = lastAuthScopeRef.current
+    lastAuthScopeRef.current = authScope
 
-    if (previousToken === token || (previousToken === undefined && token === undefined)) {
+    if (previousScope === undefined || previousScope === authScope) {
       return
     }
 
-    const syncStore = token ? apolloClient.resetStore() : apolloClient.clearStore()
+    const syncStore = authScope ? apolloClient.resetStore() : apolloClient.clearStore()
     void syncStore.catch((error) => {
+      if (isApolloStoreResetInFlightError(error)) {
+        logSentryInfo('Skipped Apollo cache sync while query was in flight', {
+          is_authenticated: Boolean(authScope),
+          error_message: error instanceof Error ? error.message : String(error)
+        })
+        return
+      }
+
       console.warn('Failed to synchronize Apollo cache after auth change', error)
       logSentryWarn('Apollo cache synchronization failed after auth change', {
-        is_authenticated: Boolean(token),
+        is_authenticated: Boolean(authScope),
         error_message: error instanceof Error ? error.message : String(error)
       })
     })
-  }, [apolloClient, token])
+  }, [apolloClient, authScope, ready])
 
   useEffect(() => {
     let cancelled = false
