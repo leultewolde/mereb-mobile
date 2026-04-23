@@ -36,6 +36,10 @@ import {
   NotificationsProvider,
   type NotificationControlsHandle
 } from './Notifications'
+import {
+  getSecureStoreItemSafe,
+  setSecureStoreToken
+} from './secureStore'
 
 type AdminAccessLevel = 'full' | 'limited' | 'none'
 
@@ -288,6 +292,30 @@ function extractErrorMessage(error: unknown): string {
   return ''
 }
 
+async function getStoredToken(
+  key: string,
+  context: 'bootstrap' | 'refresh'
+): Promise<string | null> {
+  return getSecureStoreItemSafe(key, (error) => {
+    countSentryMetric('auth_secure_store_read_blocked', 1, {
+      unit: 'attempt',
+      attributes: {
+        storage_key: key,
+        context
+      }
+    })
+    logSentryWarn('Secure store read blocked by keychain interaction policy', {
+      storage_key: key,
+      context,
+      error_message: error instanceof Error ? error.message : String(error)
+    })
+  })
+}
+
+async function setStoredToken(key: string, value: string): Promise<void> {
+  await setSecureStoreToken(key, value)
+}
+
 function isInvalidGrantError(error: unknown): boolean {
   const message = extractErrorMessage(error)
 
@@ -440,7 +468,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         return currentToken
       }
 
-      const storedRefresh = await SecureStore.getItemAsync(REFRESH_TOKEN_STORAGE_KEY)
+      const storedRefresh = await getStoredToken(REFRESH_TOKEN_STORAGE_KEY, 'refresh')
       if (!storedRefresh) {
         if (!isAccessTokenUsable(currentToken)) {
           setCurrentToken(undefined)
@@ -476,7 +504,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         )
 
         if (payload.access_token) {
-          await SecureStore.setItemAsync(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
+          await setStoredToken(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
           setCurrentToken(payload.access_token)
         } else {
           await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY)
@@ -484,7 +512,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         }
 
         if (payload.refresh_token) {
-          await SecureStore.setItemAsync(REFRESH_TOKEN_STORAGE_KEY, payload.refresh_token)
+          await setStoredToken(REFRESH_TOKEN_STORAGE_KEY, payload.refresh_token)
         }
 
         addSentryBreadcrumb({
@@ -741,7 +769,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
     }
 
     const hydrateSession = async () => {
-      const storedAccess = await SecureStore.getItemAsync(ACCESS_TOKEN_STORAGE_KEY)
+      const storedAccess = await getStoredToken(ACCESS_TOKEN_STORAGE_KEY, 'bootstrap')
       if (cancelled) {
         return
       }
@@ -881,7 +909,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         )
 
         if (payload.access_token) {
-          await SecureStore.setItemAsync(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
+          await setStoredToken(ACCESS_TOKEN_STORAGE_KEY, payload.access_token)
           setCurrentToken(payload.access_token)
         } else {
           await SecureStore.deleteItemAsync(ACCESS_TOKEN_STORAGE_KEY)
@@ -889,7 +917,7 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
         }
 
         if (payload.refresh_token) {
-          await SecureStore.setItemAsync(REFRESH_TOKEN_STORAGE_KEY, payload.refresh_token)
+          await setStoredToken(REFRESH_TOKEN_STORAGE_KEY, payload.refresh_token)
         } else {
           await SecureStore.deleteItemAsync(REFRESH_TOKEN_STORAGE_KEY)
         }

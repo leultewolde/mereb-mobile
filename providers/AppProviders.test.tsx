@@ -27,6 +27,7 @@ function getNativeTestState() {
 async function loadAppProvidersModule(options?: {
   accessToken?: string
   refreshToken?: string
+  secureStoreGetItemError?: Error
   fetchResponses?: ReturnType<typeof createJsonResponse>[]
   keycloak?: Partial<{
     url: string
@@ -58,7 +59,13 @@ async function loadAppProvidersModule(options?: {
     secureStore.set('refresh_token', options.refreshToken)
   }
 
-  const getItemAsync = vi.fn(async (key: string) => secureStore.get(key) ?? null)
+  const getItemAsync = vi.fn(async (key: string) => {
+    if (options?.secureStoreGetItemError) {
+      throw options.secureStoreGetItemError
+    }
+
+    return secureStore.get(key) ?? null
+  })
   const setItemAsync = vi.fn(async (key: string, value: string) => {
     secureStore.set(key, value)
   })
@@ -192,6 +199,7 @@ async function loadAppProvidersModule(options?: {
   }))
 
   vi.doMock('expo-secure-store', () => ({
+    AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: 2,
     getItemAsync,
     setItemAsync,
     deleteItemAsync
@@ -387,6 +395,41 @@ describe('AppProviders', () => {
     unmount()
   })
 
+  it('treats secure-store interaction errors as missing tokens during bootstrap', async () => {
+    const { module, mocks } = await loadAppProvidersModule({
+      secureStoreGetItemError: new Error(
+        "Calling the 'getValueWithKeyAsync' function has failed\n-> Caused by: User interaction is not allowed."
+      )
+    })
+    const { result, unmount } = renderAppProviders(module)
+
+    await waitForExpectation(() => {
+      expect(result.current.isReady).toBe(true)
+      expect(result.current.isAuthenticated).toBe(false)
+    })
+
+    expect(mocks.logSentryWarn).toHaveBeenCalledWith(
+      'Secure store read blocked by keychain interaction policy',
+      expect.objectContaining({
+        error_message: expect.stringContaining('User interaction is not allowed.')
+      })
+    )
+    expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+      'auth_secure_store_read_blocked',
+      1,
+      expect.objectContaining({
+        unit: 'attempt'
+      })
+    )
+    expect(
+      mocks.countSentryMetric.mock.calls.some(
+        (call) => call[0] === 'apollo_bootstrap_failure'
+      )
+    ).toBe(false)
+
+    unmount()
+  })
+
   it('refreshes an expiring bootstrap session with the stored refresh token', async () => {
     const expiringToken = createJwt({
       sub: 'user-1',
@@ -419,8 +462,20 @@ describe('AppProviders', () => {
         method: 'POST'
       })
     )
-    expect(mocks.setItemAsync).toHaveBeenCalledWith('access_token', refreshedToken)
-    expect(mocks.setItemAsync).toHaveBeenCalledWith('refresh_token', 'refresh-token-2')
+    expect(mocks.setItemAsync).toHaveBeenCalledWith(
+      'access_token',
+      refreshedToken,
+      expect.objectContaining({
+        keychainAccessible: expect.any(Number)
+      })
+    )
+    expect(mocks.setItemAsync).toHaveBeenCalledWith(
+      'refresh_token',
+      'refresh-token-2',
+      expect.objectContaining({
+        keychainAccessible: expect.any(Number)
+      })
+    )
     expect(mocks.countSentryMetric).toHaveBeenCalledWith(
       'auth_refresh_attempt',
       1,
@@ -618,7 +673,13 @@ describe('AppProviders', () => {
       usePKCE: true
     })
     expect(mocks.authRequestInstance()?.promptAsync).toHaveBeenCalled()
-    expect(mocks.setItemAsync).toHaveBeenCalledWith('access_token', loginToken)
+    expect(mocks.setItemAsync).toHaveBeenCalledWith(
+      'access_token',
+      loginToken,
+      expect.objectContaining({
+        keychainAccessible: expect.any(Number)
+      })
+    )
     expect(mocks.logSentryInfo).toHaveBeenCalledWith(
       'Interactive auth flow completed',
       expect.objectContaining({
@@ -647,7 +708,13 @@ describe('AppProviders', () => {
         kc_action: 'register'
       }
     })
-    expect(mocks.setItemAsync).toHaveBeenCalledWith('access_token', registerToken)
+    expect(mocks.setItemAsync).toHaveBeenCalledWith(
+      'access_token',
+      registerToken,
+      expect.objectContaining({
+        keychainAccessible: expect.any(Number)
+      })
+    )
     expect(mocks.logSentryInfo).toHaveBeenCalledWith(
       'Interactive auth flow completed',
       expect.objectContaining({
