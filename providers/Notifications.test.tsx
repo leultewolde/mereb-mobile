@@ -886,6 +886,55 @@ describe('NotificationsProvider', () => {
     unmount()
   })
 
+  it('skips auth-transition settings query errors without capturing exceptions', async () => {
+    const { module, mocks } = await loadNotificationsModule({
+      settingsError: new Error('Token is not active')
+    })
+    const { result, unmount } = renderNotificationsProvider(module, {
+      authToken: 'token-1',
+      userId: 'user-1',
+      isAuthenticated: true
+    })
+
+    await waitForExpectation(() => {
+      expect(result.current.isReady).toBe(true)
+      expect(mocks.countSentryMetric).toHaveBeenCalledWith(
+        'notification_settings_query_skipped',
+        1,
+        {
+          unit: 'attempt',
+          attributes: {
+            reason: 'auth_transition'
+          }
+        }
+      )
+    })
+
+    expect(mocks.captureSentryException).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Token is not active' })
+    )
+    expect(mocks.countSentryMetric).not.toHaveBeenCalledWith(
+      'notification_settings_query_failure',
+      expect.anything(),
+      expect.anything()
+    )
+    expect(mocks.logSentryWarn).toHaveBeenCalledWith(
+      'Notification settings query skipped during auth transition',
+      expect.objectContaining({
+        error_message: 'Token is not active'
+      })
+    )
+    expect(mocks.addBreadcrumb).toHaveBeenCalledWith(
+      expect.objectContaining({
+        category: 'notifications',
+        message: 'Skipped notification settings query during auth transition',
+        level: 'warning'
+      })
+    )
+
+    unmount()
+  })
+
   it('captures push-device registration failures and still clears saving state', async () => {
     const nativeTestState = getNativeTestState()
     nativeTestState.platformState.OS = 'android'

@@ -33,6 +33,7 @@ import {
   logSentryInfo,
   logSentryWarn
 } from '../monitoring/sentry'
+import {isAuthenticationErrorMessage} from "@mobile/helpers";
 
 const INSTALLATION_ID_STORAGE_KEY = 'notifications.installationId'
 const DIRECT_MESSAGES_CACHE_STORAGE_KEY = 'notifications.directMessagesEnabled'
@@ -217,6 +218,18 @@ function toGraphPermissionStatus(
     default:
       return 'UNKNOWN'
   }
+}
+
+function isApolloStoreResetInFlightError(message?: string): boolean {
+  const normalized = message?.trim().toLowerCase()
+  if (!normalized) {
+    return false
+  }
+
+  return (
+    normalized.includes('store reset while query was in flight') ||
+    normalized.includes('not completed in link chain')
+  )
 }
 
 async function ensureInstallationId(): Promise<string> {
@@ -808,6 +821,30 @@ export function NotificationsProvider({
     }
 
     lastSettingsErrorRef.current = errorKey
+
+    if (
+      isAuthenticationErrorMessage(settingsQuery.error.message) ||
+      isApolloStoreResetInFlightError(settingsQuery.error.message)
+    ) {
+      countSentryMetric('notification_settings_query_skipped', 1, {
+        unit: 'attempt',
+        attributes: {
+          reason: isApolloStoreResetInFlightError(settingsQuery.error.message)
+            ? 'apollo_store_sync'
+            : 'auth_transition'
+        }
+      })
+      logSentryWarn('Notification settings query skipped during auth transition', {
+        error_message: settingsQuery.error.message
+      })
+      addSentryBreadcrumb({
+        category: 'notifications',
+        message: 'Skipped notification settings query during auth transition',
+        level: 'warning'
+      })
+      return
+    }
+
     captureSentryException(settingsQuery.error)
     countSentryMetric('notification_settings_query_failure', 1, {
       unit: 'attempt'
