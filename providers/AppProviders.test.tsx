@@ -879,7 +879,7 @@ describe('AppProviders', () => {
       expect(result.current.isAuthenticated).toBe(false)
     })
 
-    expect(mocks.captureSentryException).toHaveBeenCalled()
+    expect(mocks.captureSentryException).not.toHaveBeenCalled()
     expect(mocks.deleteItemAsync).toHaveBeenCalledWith('access_token')
     expect(mocks.deleteItemAsync).toHaveBeenCalledWith('refresh_token')
 
@@ -911,7 +911,7 @@ describe('AppProviders', () => {
       expect(result.current.isAuthenticated).toBe(false)
     })
 
-    expect(mocks.captureSentryException).toHaveBeenCalled()
+    expect(mocks.captureSentryException).not.toHaveBeenCalled()
     expect(mocks.deleteItemAsync).toHaveBeenCalledWith('access_token')
     expect(mocks.deleteItemAsync).toHaveBeenCalledWith('refresh_token')
     expect(mocks.logSentryWarn).toHaveBeenCalledWith(
@@ -953,7 +953,7 @@ describe('AppProviders', () => {
 
     await waitForExpectation(() => {
       expect(mocks.logSentryInfo).toHaveBeenCalledWith(
-        'Skipped Apollo cache sync while query was in flight',
+        'Deferred Apollo cache sync while query was in flight',
         expect.objectContaining({
           is_authenticated: true
         })
