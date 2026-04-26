@@ -29,7 +29,9 @@ function RootLayout() {
         <Stack
           screenOptions={{
             headerShadowVisible: false,
-            headerTitleAlign: 'center'
+            headerTitleAlign: 'center',
+            headerBackButtonDisplayMode: 'minimal',
+            headerBackTitle: ''
           }}
         >
           <Stack.Screen
