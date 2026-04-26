@@ -7,6 +7,7 @@ import { ApolloProvider } from '@apollo/client/react'
 import { AsyncStorageWrapper, persistCache } from 'apollo3-cache-persist'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as AuthSession from 'expo-auth-session'
+import { fetch as expoFetch } from 'expo/fetch'
 import * as SecureStore from 'expo-secure-store'
 import { AppState } from 'react-native'
 import {
@@ -806,12 +807,13 @@ export function AppProviders({ children }: Readonly<PropsWithChildren>) {
 
   const graphqlFetch = useCallback(
       async (uri: RequestInfo | URL, options: RequestInit = {}) => {
+        const requestUrl = typeof uri === 'string' ? uri : uri.toString()
         const executeFetch = async (
             requestOptions: RequestInit
         ): Promise<Response> => {
           inFlightGraphqlRequestsRef.current += 1
           try {
-            return await fetch(uri, requestOptions)
+            return (await expoFetch(requestUrl, requestOptions as Parameters<typeof expoFetch>[1])) as unknown as Response
           } finally {
             inFlightGraphqlRequestsRef.current = Math.max(
                 0,

@@ -12,6 +12,7 @@
       }
     },
     "dev": {
+      "developmentClient": true,
       "environment": "development",
       "distribution": "internal",
       "channel": "dev",
