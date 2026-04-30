@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - mobile-v*
-  workflow_dispatch: {}
 
 defaults:
   tools:
@@ -62,7 +61,6 @@ jobs:
     environment: production
     env:
       APP_STAGE: prd
-      EXPO_DEBUG: "1"
     params:
       build_id: ${{ needs.build_ios.outputs.build_id }}
       profile: prd
@@ -75,7 +73,6 @@ jobs:
     environment: production
     env:
       APP_STAGE: prd
-      EXPO_DEBUG: "1"
     params:
       build_id: ${{ needs.build_android.outputs.build_id }}
       profile: prd

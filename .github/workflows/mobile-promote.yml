@@ -86,7 +86,7 @@ jobs:
       - name: Install eas-cli
         run: pnpm add -g eas-cli
 
-      - name: Verify a successful stg EAS build exists for this commit
+      - name: Verify a successful stg EAS build was submitted for this commit
         env:
           STG_SHA: ${{ steps.stg_tag.outputs.stg_sha }}
         run: |
@@ -96,20 +96,62 @@ jobs:
             exit 1
           fi
 
-          builds_json="$(eas build:list --channel stg --status finished --limit 50 --json --non-interactive)"
-          match_count="$(node -e "
-            const sha = process.env.STG_SHA;
+          builds_json="$(eas build:list \
+            --channel stg \
+            --status finished \
+            --git-commit-hash "$STG_SHA" \
+            --limit 100 \
+            --json \
+            --non-interactive)"
+
+          node -e "
             const builds = JSON.parse(require('fs').readFileSync(0, 'utf8'));
-            const matches = builds.filter((b) => b.gitCommitHash && b.gitCommitHash.startsWith(sha));
-            console.log(matches.length);
-          " <<<"$builds_json")"
+            if (!Array.isArray(builds) || builds.length === 0) {
+              console.error('No finished stg EAS build found for commit ' + process.env.STG_SHA + '.');
+              process.exit(1);
+            }
 
-          if [ "$match_count" -lt 1 ]; then
-            echo "No successful stg EAS build found for commit ${STG_SHA}. Refusing to promote." >&2
-            exit 1
-          fi
+            const requiredPlatforms = ['ios', 'android'];
+            const missing = [];
+            for (const platform of requiredPlatforms) {
+              const platformBuilds = builds.filter(
+                (b) => String(b.platform || '').toLowerCase() === platform
+              );
+              if (platformBuilds.length === 0) {
+                missing.push(platform + ' (no finished build)');
+                continue;
+              }
+              const submitted = platformBuilds.some(
+                (b) =>
+                  Array.isArray(b.submissions) &&
+                  b.submissions.some(
+                    (s) => String(s.status || '').toUpperCase() === 'FINISHED'
+                  )
+              );
+              if (!submitted) {
+                missing.push(platform + ' (no FINISHED submission for any build)');
+              }
+            }
 
-          echo "Found ${match_count} successful stg build(s) for commit ${STG_SHA}."
+            if (missing.length > 0) {
+              console.error(
+                'Stg promotion gate failed for commit ' +
+                  process.env.STG_SHA +
+                  ': ' +
+                  missing.join(', ') +
+                  '.'
+              );
+              process.exit(1);
+            }
+
+            console.log(
+              'Verified finished + submitted stg builds for commit ' +
+                process.env.STG_SHA +
+                ' on platforms: ' +
+                requiredPlatforms.join(', ') +
+                '.'
+            );
+          " <<<"$builds_json"
 
       - name: Create and push prd tag
         working-directory: ${{ github.workspace }}
