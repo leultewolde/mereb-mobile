@@ -1,0 +1,140 @@
+name: mobile-promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      stg_version:
+        description: "Stg version to promote, e.g. v1.2.3 (must already exist as mobile-stg-v<version>)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mobile-promote-${{ inputs.stg_version }}
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Promote mobile stg → prd
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      STG_VERSION: ${{ inputs.stg_version }}
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - name: Validate stg_version format
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$STG_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "stg_version must match ^v\\d+\\.\\d+\\.\\d+$ (got: $STG_VERSION)" >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch tags
+        working-directory: ${{ github.workspace }}
+        run: git fetch --tags --force
+
+      - name: Verify stg tag exists
+        id: stg_tag
+        working-directory: ${{ github.workspace }}
+        run: |
+          set -euo pipefail
+          stg_tag="mobile-stg-${STG_VERSION}"
+          if ! git rev-parse -q --verify "refs/tags/${stg_tag}" >/dev/null; then
+            echo "Stg tag ${stg_tag} does not exist. Refusing to promote." >&2
+            exit 1
+          fi
+          sha="$(git rev-list -n 1 "${stg_tag}")"
+          echo "stg_tag=${stg_tag}" >> "$GITHUB_OUTPUT"
+          echo "stg_sha=${sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify prd tag does not already exist
+        id: prd_tag
+        working-directory: ${{ github.workspace }}
+        env:
+          STG_SHA: ${{ steps.stg_tag.outputs.stg_sha }}
+        run: |
+          set -euo pipefail
+          prd_tag="mobile-${STG_VERSION}"
+          if git rev-parse -q --verify "refs/tags/${prd_tag}" >/dev/null; then
+            echo "Prd tag ${prd_tag} already exists. Refusing to recreate." >&2
+            exit 1
+          fi
+          echo "prd_tag=${prd_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.30.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Install eas-cli
+        run: pnpm add -g eas-cli
+
+      - name: Verify a successful stg EAS build exists for this commit
+        env:
+          STG_SHA: ${{ steps.stg_tag.outputs.stg_sha }}
+        run: |
+          set -euo pipefail
+          if [ -z "${EXPO_TOKEN:-}" ]; then
+            echo "EXPO_TOKEN secret is required to query EAS build history." >&2
+            exit 1
+          fi
+
+          builds_json="$(eas build:list --channel stg --status finished --limit 50 --json --non-interactive)"
+          match_count="$(node -e "
+            const sha = process.env.STG_SHA;
+            const builds = JSON.parse(require('fs').readFileSync(0, 'utf8'));
+            const matches = builds.filter((b) => b.gitCommitHash && b.gitCommitHash.startsWith(sha));
+            console.log(matches.length);
+          " <<<"$builds_json")"
+
+          if [ "$match_count" -lt 1 ]; then
+            echo "No successful stg EAS build found for commit ${STG_SHA}. Refusing to promote." >&2
+            exit 1
+          fi
+
+          echo "Found ${match_count} successful stg build(s) for commit ${STG_SHA}."
+
+      - name: Create and push prd tag
+        working-directory: ${{ github.workspace }}
+        env:
+          STG_TAG: ${{ steps.stg_tag.outputs.stg_tag }}
+          STG_SHA: ${{ steps.stg_tag.outputs.stg_sha }}
+          PRD_TAG: ${{ steps.prd_tag.outputs.prd_tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${PRD_TAG}" "${STG_SHA}" -m "Mobile prd promotion of ${STG_TAG} (commit ${STG_SHA})"
+          git push origin "${PRD_TAG}"
+
+      - name: Summarize promotion
+        working-directory: ${{ github.workspace }}
+        env:
+          STG_TAG: ${{ steps.stg_tag.outputs.stg_tag }}
+          STG_SHA: ${{ steps.stg_tag.outputs.stg_sha }}
+          PRD_TAG: ${{ steps.prd_tag.outputs.prd_tag }}
+        run: |
+          {
+            echo "### Mobile prd promotion"
+            echo "- Stg tag: \`${STG_TAG}\`"
+            echo "- Commit: \`${STG_SHA}\`"
+            echo "- Prd tag created: \`${PRD_TAG}\`"
+            echo "- Next: \`mobile-prd-release\` will run automatically on tag push."
+          } >> "$GITHUB_STEP_SUMMARY"

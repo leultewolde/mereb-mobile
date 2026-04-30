@@ -1,9 +1,8 @@
-name: mobile-release
+name: mobile-prd-release
 
 on:
   push:
     tags:
-      - v*
       - mobile-v*
   workflow_dispatch: {}
 
@@ -32,7 +31,7 @@ jobs:
         run: pnpm exec eslint .
 
   build_ios:
-    name: Build iOS
+    name: Build iOS (prd)
     needs:
       - validate
     type: build
@@ -44,7 +43,7 @@ jobs:
       profile: prd
 
   build_android:
-    name: Build Android
+    name: Build Android (prd)
     needs:
       - validate
     type: build
@@ -56,7 +55,7 @@ jobs:
       profile: prd
 
   submit_ios:
-    name: Submit iOS to TestFlight
+    name: Submit iOS to TestFlight (prd)
     needs:
       - build_ios
     type: submit
@@ -69,7 +68,7 @@ jobs:
       profile: prd
 
   submit_android:
-    name: Submit Android to Play internal testing
+    name: Submit Android to Play Production (10% rollout)
     needs:
       - build_android
     type: submit
@@ -82,7 +81,7 @@ jobs:
       profile: prd
 
   next_steps:
-    name: Release summary
+    name: Prd release summary
     needs:
       - build_ios
       - build_android
@@ -91,11 +90,17 @@ jobs:
     type: doc
     params:
       md: |
-        # Mobile release submitted
+        # Mobile prd release submitted
 
         - Workflow run: ${{ workflow.url }}
         - Source ref: `${{ github.ref_name || 'manual-run' }}`
         - iOS build ID: `${{ needs.build_ios.outputs.build_id }}`
         - Android build ID: `${{ needs.build_android.outputs.build_id }}`
         - iOS submission: App Store Connect / TestFlight via submit profile `prd`
-        - Android submission: Google Play internal testing via submit profile `prd`
+        - Android submission: Google Play Production at 10% rollout via submit profile `prd`
+
+        ## Next steps
+
+        - Monitor crash-free rate / Sentry for 24–48h.
+        - In Play Console, promote the rollout from 10% to 100% when metrics look clean.
+        - In App Store Connect, release the iOS TestFlight build to the App Store.

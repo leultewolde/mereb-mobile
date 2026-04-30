@@ -2,17 +2,19 @@ import { execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
 
 const bump = process.argv[2]
+const prefix = process.argv[3] ?? 'v'
 const validBumps = new Set(['patch', 'minor', 'major'])
 
 if (!validBumps.has(bump)) {
-  console.error('Usage: node ./scripts/compute-next-tag.mjs <patch|minor|major>')
+  console.error('Usage: node ./scripts/compute-next-tag.mjs <patch|minor|major> [tag-prefix]')
   process.exit(1)
 }
 
-const versionPattern = /^v(\d+)\.(\d+)\.(\d+)$/
+const escapedPrefix = prefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+const versionPattern = new RegExp(`^${escapedPrefix}(\\d+)\\.(\\d+)\\.(\\d+)$`)
 
 function listReleaseTags() {
-  const output = execFileSync('git', ['tag', '--list', 'v*'], {
+  const output = execFileSync('git', ['tag', '--list', `${prefix}*`], {
     encoding: 'utf8'
   })
 
@@ -68,7 +70,7 @@ function computeNextVersion(previousTag) {
 const releaseTags = listReleaseTags()
 const previousTag = releaseTags.at(-1) ?? null
 const nextVersion = computeNextVersion(previousTag)
-const nextTag = `v${nextVersion.major}.${nextVersion.minor}.${nextVersion.patch}`
+const nextTag = `${prefix}${nextVersion.major}.${nextVersion.minor}.${nextVersion.patch}`
 
 if (process.env.GITHUB_OUTPUT) {
   appendFileSync(process.env.GITHUB_OUTPUT, `previous_tag=${previousTag?.tag ?? ''}\n`)
@@ -80,6 +82,7 @@ console.log(
   JSON.stringify(
     {
       bump,
+      prefix,
       previousTag: previousTag?.tag ?? null,
       nextTag
     },

@@ -1,0 +1,107 @@
+name: mobile-stg-release
+
+on:
+  push:
+    tags:
+      - mobile-stg-v*
+  workflow_dispatch: {}
+
+defaults:
+  tools:
+    node: "20"
+    corepack: true
+    pnpm: "10.30.1"
+
+jobs:
+  validate:
+    name: Validate mobile repo
+    runs_on: linux-medium
+    environment: preview
+    env:
+      APP_STAGE: stg
+    steps:
+      - uses: eas/checkout
+      - name: Install mobile dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Mobile config contract test
+        run: pnpm exec vitest run config/stages.test.ts config/index.test.ts
+      - name: Typecheck mobile app
+        run: pnpm exec tsc --noEmit
+      - name: Lint mobile app
+        run: pnpm exec eslint .
+
+  build_ios:
+    name: Build iOS (stg)
+    needs:
+      - validate
+    type: build
+    environment: preview
+    env:
+      APP_STAGE: stg
+    params:
+      platform: ios
+      profile: stg
+
+  build_android:
+    name: Build Android (stg)
+    needs:
+      - validate
+    type: build
+    environment: preview
+    env:
+      APP_STAGE: stg
+    params:
+      platform: android
+      profile: stg
+
+  submit_ios:
+    name: Submit iOS to TestFlight Internal Testing
+    needs:
+      - build_ios
+    type: submit
+    environment: preview
+    env:
+      APP_STAGE: stg
+      EXPO_DEBUG: "1"
+    params:
+      build_id: ${{ needs.build_ios.outputs.build_id }}
+      profile: stg
+
+  submit_android:
+    name: Submit Android to Play Internal Testing
+    needs:
+      - build_android
+    type: submit
+    environment: preview
+    env:
+      APP_STAGE: stg
+      EXPO_DEBUG: "1"
+    params:
+      build_id: ${{ needs.build_android.outputs.build_id }}
+      profile: stg
+
+  next_steps:
+    name: Stg release summary
+    needs:
+      - build_ios
+      - build_android
+      - submit_ios
+      - submit_android
+    type: doc
+    params:
+      md: |
+        # Mobile stg release submitted
+
+        - Workflow run: ${{ workflow.url }}
+        - Source ref: `${{ github.ref_name || 'manual-run' }}`
+        - iOS build ID: `${{ needs.build_ios.outputs.build_id }}`
+        - Android build ID: `${{ needs.build_android.outputs.build_id }}`
+        - iOS submission: TestFlight Internal Testing via submit profile `stg`
+        - Android submission: Google Play Internal Testing via submit profile `stg`
+
+        ## Next steps
+
+        - Internal testers verify the build.
+        - Once verified, run the **Promote mobile to prd** workflow in GitHub Actions
+          with `stg_version` set to the version segment of this tag (e.g. `v1.2.3`)
+          to create the `mobile-v*` tag and trigger `mobile-prd-release`.
