@@ -68,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          existing_tag="$(git tag --points-at "$MERGE_SHA" --list 'v*' | head -n 1)"
+          existing_tag="$(git tag --points-at "$MERGE_SHA" --list 'mobile-stg-v*' | head -n 1)"
           echo "existing_tag=$existing_tag" >> "$GITHUB_OUTPUT"
 
           if [ -n "$existing_tag" ]; then
@@ -77,14 +77,14 @@ jobs:
               echo "- PR: #${{ github.event.pull_request.number }}"
               echo "- Selected label: \`${{ steps.release.outputs.label }}\`"
               echo "- Result: skipped"
-              echo "- Existing tag on merge commit: \`$existing_tag\`"
+              echo "- Existing stg tag on merge commit: \`$existing_tag\`"
             } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      - name: Compute next release tag
+      - name: Compute next stg release tag
         if: steps.release.outputs.should_release == 'true' && steps.existing.outputs.existing_tag == ''
         id: version
-        run: node ./scripts/compute-next-tag.mjs "${{ steps.release.outputs.bump }}"
+        run: node ./scripts/compute-next-tag.mjs "${{ steps.release.outputs.bump }}" "mobile-stg-v"
 
       - name: Guard against duplicate computed tag
         if: steps.release.outputs.should_release == 'true' && steps.existing.outputs.existing_tag == ''
@@ -109,16 +109,17 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git tag -a "$NEXT_TAG" "$MERGE_SHA" -m "Mobile release $NEXT_TAG for PR #${{ github.event.pull_request.number }}"
+          git tag -a "$NEXT_TAG" "$MERGE_SHA" -m "Mobile stg release $NEXT_TAG for PR #${{ github.event.pull_request.number }}"
           git push origin "$NEXT_TAG"
 
-      - name: Summarize created release tag
+      - name: Summarize created stg release tag
         if: steps.release.outputs.should_release == 'true' && steps.existing.outputs.existing_tag == ''
         run: |
           {
             echo "### Mobile auto-tagging"
             echo "- PR: #${{ github.event.pull_request.number }}"
             echo "- Selected label: \`${{ steps.release.outputs.label }}\`"
-            echo "- Previous tag: \`${{ steps.version.outputs.previous_tag || 'none' }}\`"
-            echo "- New tag: \`${{ steps.version.outputs.next_tag }}\`"
+            echo "- Previous stg tag: \`${{ steps.version.outputs.previous_tag || 'none' }}\`"
+            echo "- New stg tag: \`${{ steps.version.outputs.next_tag }}\`"
+            echo "- Next: stg build will be triggered; promote to prd via the \`mobile-promote\` workflow once stg is verified."
           } >> "$GITHUB_STEP_SUMMARY"
