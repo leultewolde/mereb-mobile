@@ -2,6 +2,7 @@ import { Tabs, useRouter } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { tokens } from '@mereb/tokens/native'
 import { Pressable } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { config } from '@mobile/config'
 
 type TabIconProps = {
@@ -74,6 +75,7 @@ function NotificationSettingsButton() {
 
 export function AppTabsLayout() {
   const { color } = tokens
+  const insets = useSafeAreaInsets()
 
   return (
     <Tabs
@@ -84,8 +86,8 @@ export function AppTabsLayout() {
         tabBarStyle: {
           backgroundColor: color.surfaceAlt,
           borderTopColor: color.borderStrong,
-          height: 62,
-          paddingBottom: 10,
+          height: 62 + insets.bottom,
+          paddingBottom: 10 + insets.bottom,
           paddingTop: 8
         },
         tabBarLabelStyle: {
