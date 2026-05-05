@@ -22,9 +22,8 @@
     },
     "stg": {
       "environment": "preview",
-      "distribution": "store",
+      "distribution": "internal",
       "channel": "stg",
-      "autoIncrement": true,
       "env": {
         "APP_STAGE": "stg"
       }
@@ -40,21 +39,10 @@
     }
   },
   "submit": {
-    "stg": {
+    "prd": {
       "android": {
         "track": "internal",
         "releaseStatus": "completed",
-        "changesNotSentForReview": false
-      },
-      "ios": {
-        "ascAppId": "6762027209"
-      }
-    },
-    "prd": {
-      "android": {
-        "track": "production",
-        "releaseStatus": "inProgress",
-        "rollout": 0.1,
         "changesNotSentForReview": false
       },
       "ios": {
