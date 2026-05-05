@@ -73,7 +73,7 @@ const config: ExpoConfig = {
   scheme: stageConfig.appScheme,
   version: '1.0.1',
   description: 'Private team network for updates, profiles, and messaging across the Mereb platform.',
-  orientation: 'portrait',
+  orientation: 'default',
   icon: './assets/icon.png',
   userInterfaceStyle: 'light',
   splash: {
@@ -86,7 +86,8 @@ const config: ExpoConfig = {
     supportsTablet: false,
     associatedDomains: iosAssociatedDomains,
     infoPlist: {
-      ITSAppUsesNonExemptEncryption: false
+      ITSAppUsesNonExemptEncryption: false,
+      UISupportedInterfaceOrientations: ['UIInterfaceOrientationPortrait']
     }
   },
   android: {
@@ -135,6 +136,9 @@ const config: ExpoConfig = {
       {
         ios: {
           useFrameworks: 'static'
+        },
+        android: {
+          edgeToEdgeEnabled: true
         }
       }
     ]
