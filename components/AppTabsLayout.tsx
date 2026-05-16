@@ -99,7 +99,7 @@ export function AppTabsLayout() {
       <Tabs.Screen
         name="feed"
         options={{
-          title: 'Feed',
+          title: 'Home',
           tabBarIcon: FeedTabIcon
         }}
       />
